@@ -121,6 +121,12 @@ async def root():
     return FileResponse(static_path / "index.html")
 
 
+@app.get("/health")
+async def health():
+    """Health check endpoint for Railway."""
+    return {"status": "healthy", "version": "MVP-1.0.0"}
+
+
 @app.get("/generate")
 async def generate_page():
     """Serve the generate page."""
