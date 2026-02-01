@@ -16,6 +16,8 @@
 let selectedCity = null;
 let selectedCountry = null;
 let selectedTheme = 'noir';
+let selectedDistance = 5000; // Track distance in state
+let selectedSize = '50x70';  // Track size in state
 let debounceTimer = null;
 let themes = [];
 let previews = []; // Store generated previews
@@ -26,8 +28,6 @@ const MAX_PREVIEWS = 3;
 const cityInput = document.getElementById('cityInput');
 const autocompleteDropdown = document.getElementById('autocompleteDropdown');
 const themeGallery = document.getElementById('themeGallery');
-const distanceSelect = document.getElementById('distanceSelect');
-const sizeSelect = document.getElementById('sizeSelect');
 const generateBtn = document.getElementById('generateBtn');
 const progressText = document.getElementById('progressText');
 
@@ -59,6 +59,58 @@ const downloadBtn = document.getElementById('downloadBtn');
 const createAnother = document.getElementById('createAnother');
 
 // ============================================
+// Toast Notifications
+// ============================================
+
+function showToast(message, type = 'error') {
+    // Remove any existing toast
+    const existingToast = document.querySelector('.toast-notification');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast-notification toast-${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            <div class="toast-icon">
+                ${type === 'error' ? `
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 8v4M12 16h.01"/>
+                    </svg>
+                ` : `
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                `}
+            </div>
+            <div class="toast-message">${message}</div>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    requestAnimationFrame(() => {
+        toast.classList.add('active');
+    });
+    
+    // Auto-remove after 6 seconds
+    setTimeout(() => {
+        toast.classList.remove('active');
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
+}
+
+
+// ============================================
 // Initialize
 // ============================================
 
@@ -66,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadThemes();
     setupEventListeners();
     setupRadiusGallery();
+    setupSizeGallery();
     
     // Check URL params
     const params = new URLSearchParams(window.location.search);
@@ -86,6 +139,7 @@ async function loadThemes() {
         renderThemeGallery();
     } catch (error) {
         console.error('Failed to load themes:', error);
+        showToast('Failed to load themes. Please refresh the page.');
     }
 }
 
@@ -122,6 +176,7 @@ function renderThemeGallery() {
             themeGallery.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
             selectedTheme = card.dataset.theme;
+            console.log('Theme selected:', selectedTheme);
         });
     });
 }
@@ -129,17 +184,77 @@ function renderThemeGallery() {
 // Setup radius gallery click handlers
 function setupRadiusGallery() {
     const radiusGallery = document.getElementById('radiusGallery');
-    const distanceInput = document.getElementById('distanceSelect');
-    
     if (!radiusGallery) return;
     
-    radiusGallery.querySelectorAll('.radius-option').forEach(option => {
-        option.addEventListener('click', () => {
-            radiusGallery.querySelectorAll('.radius-option').forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-            distanceInput.value = option.dataset.value;
-        });
+    // Use event delegation for more reliable handling
+    radiusGallery.addEventListener('click', (e) => {
+        const option = e.target.closest('.radius-image-option');
+        if (!option) return;
+        
+        // Update visual selection
+        radiusGallery.querySelectorAll('.radius-image-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        
+        // Update state
+        selectedDistance = parseInt(option.dataset.value);
+        console.log('Distance selected:', selectedDistance);
     });
+    
+    // Set initial value from currently selected option
+    const selectedOption = radiusGallery.querySelector('.radius-image-option.selected');
+    if (selectedOption) {
+        selectedDistance = parseInt(selectedOption.dataset.value);
+    }
+}
+
+// Get current distance from DOM (fallback)
+function getCurrentDistance() {
+    const radiusGallery = document.getElementById('radiusGallery');
+    if (!radiusGallery) return selectedDistance;
+    
+    const selected = radiusGallery.querySelector('.radius-image-option.selected');
+    if (selected) {
+        return parseInt(selected.dataset.value);
+    }
+    return selectedDistance;
+}
+
+// Setup size gallery click handlers
+function setupSizeGallery() {
+    const sizeGallery = document.getElementById('sizeGallery');
+    if (!sizeGallery) return;
+    
+    // Use event delegation for more reliable handling
+    sizeGallery.addEventListener('click', (e) => {
+        const option = e.target.closest('.size-option');
+        if (!option) return;
+        
+        // Update visual selection
+        sizeGallery.querySelectorAll('.size-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        
+        // Update state
+        selectedSize = option.dataset.value;
+        console.log('Size selected:', selectedSize);
+    });
+    
+    // Set initial value from currently selected option
+    const selectedOption = sizeGallery.querySelector('.size-option.selected');
+    if (selectedOption) {
+        selectedSize = selectedOption.dataset.value;
+    }
+}
+
+// Get current size from DOM (fallback)
+function getCurrentSize() {
+    const sizeGallery = document.getElementById('sizeGallery');
+    if (!sizeGallery) return selectedSize;
+    
+    const selected = sizeGallery.querySelector('.size-option.selected');
+    if (selected) {
+        return selected.dataset.value;
+    }
+    return selectedSize;
 }
 
 // Convert cm to inches for backend
@@ -176,6 +291,22 @@ function setupEventListeners() {
         closeResultModal();
         resetAll();
     });
+    
+    // Preview zoom
+    const previewWrapper = document.getElementById('previewWrapper');
+    if (previewWrapper) {
+        previewWrapper.addEventListener('click', openZoomModal);
+    }
+    
+    // Zoom modal
+    const zoomModalClose = document.getElementById('zoomModalClose');
+    const zoomModal = document.getElementById('zoomModal');
+    if (zoomModalClose) {
+        zoomModalClose.addEventListener('click', closeZoomModal);
+    }
+    if (zoomModal) {
+        zoomModal.querySelector('.modal-backdrop')?.addEventListener('click', closeZoomModal);
+    }
 }
 
 // ============================================
@@ -265,6 +396,8 @@ function resetAll() {
     selectedCity = null;
     selectedCountry = null;
     selectedTheme = 'noir';
+    selectedDistance = 5000;
+    selectedSize = '50x70';
     previews = [];
     currentPreviewIndex = 0;
     renderThemeGallery();
@@ -283,7 +416,7 @@ async function handleGenerate() {
             selectedCity = parts[0];
             selectedCountry = parts.slice(1).join(', ');
         } else {
-            alert('Please select a city from the suggestions');
+            showToast('Please select a location from the suggestions');
             cityInput.focus();
             return;
         }
@@ -291,24 +424,32 @@ async function handleGenerate() {
     
     // Check limit
     if (previews.length >= MAX_PREVIEWS) {
-        alert(`Maximum ${MAX_PREVIEWS} previews reached. Remove one to generate a new one.`);
+        showToast(`Maximum ${MAX_PREVIEWS} previews reached. Remove one to generate a new one.`);
         return;
     }
     
-    // Get settings - convert cm to inches for backend
-    const sizeValue = sizeSelect.value;
-    const [widthCm, heightCm] = sizeValue.split('x').map(Number);
+    // Get settings - read from DOM to ensure latest values
+    const currentDistance = getCurrentDistance();
+    const currentSize = getCurrentSize();
+    const [widthCm, heightCm] = currentSize.split('x').map(Number);
     const width = cmToInches(widthCm);
     const height = cmToInches(heightCm);
+    
+    // Get currently selected theme from DOM
+    const selectedThemeCard = themeGallery.querySelector('.theme-card.selected');
+    const currentTheme = selectedThemeCard ? selectedThemeCard.dataset.theme : selectedTheme;
     
     const settings = {
         city: selectedCity,
         country: selectedCountry,
-        theme: selectedTheme,
-        distance: parseInt(distanceSelect.value),
+        theme: currentTheme,
+        distance: currentDistance,
         width: width,
         height: height
     };
+    
+    console.log('Generating with settings:', settings);
+    console.log('Distance from DOM:', currentDistance, 'Size from DOM:', currentSize, 'Theme:', currentTheme);
     
     // Show loading
     showLoading();
@@ -328,9 +469,14 @@ async function handleGenerate() {
         
         if (!startResponse.ok) {
             const errorDetail = startResult.detail;
-            const errorMsg = Array.isArray(errorDetail) 
-                ? errorDetail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ')
-                : (errorDetail || 'Failed to start preview');
+            let errorMsg;
+            if (Array.isArray(errorDetail)) {
+                errorMsg = errorDetail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+            } else if (typeof errorDetail === 'object') {
+                errorMsg = errorDetail.msg || errorDetail.message || JSON.stringify(errorDetail);
+            } else {
+                errorMsg = errorDetail || 'Failed to start preview';
+            }
             throw new Error(errorMsg);
         }
         
@@ -344,7 +490,7 @@ async function handleGenerate() {
             const progressResponse = await fetch(`/api/progress/${jobId}`);
             const progress = await progressResponse.json();
             
-            updateProgress(progress.step, progress.total, progress.message);
+            updateProgress(progress.step, progress.total, progress.message, progress.percent);
             
             if (progress.status === 'complete') {
                 complete = true;
@@ -371,8 +517,7 @@ async function handleGenerate() {
         
     } catch (error) {
         console.error('Preview error:', error);
-        const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        alert(`Error: ${errorMsg}`);
+        showToast(error.message || 'An unexpected error occurred');
         hideLoading();
     } finally {
         generateBtn.classList.remove('loading');
@@ -380,24 +525,103 @@ async function handleGenerate() {
     }
 }
 
+// Progress animation
+let progressInterval = null;
+let displayPercent = 0;
+let targetPercent = 0;
+let currentStep = 0;
+let currentMessage = 'Starting...';
+let isCatchingUp = false; // True when transitioning between steps
+
+// Step config: min% where step starts, max% it can reach
+const STEP_CONFIG = {
+    1: { min: 0, max: 7 },     // Location
+    2: { min: 8, max: 51 },    // Streets (longest)
+    3: { min: 52, max: 71 },   // Water
+    4: { min: 72, max: 87 },   // Parks
+    5: { min: 88, max: 95 },   // Render
+    6: { min: 96, max: 99 }    // Save
+};
+
 function showLoading() {
     loadingOverlay.classList.add('active');
-    updateProgress(0, 6, 'Starting...');
+    displayPercent = 0;
+    targetPercent = 0;
+    currentStep = 0;
+    isCatchingUp = false;
+    renderProgress(0, 'Starting...');
+    
+    if (progressInterval) clearInterval(progressInterval);
+    progressInterval = setInterval(tickProgress, 80);
 }
 
 function hideLoading() {
     loadingOverlay.classList.remove('active');
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
 }
 
-function updateProgress(step, total, message) {
-    const percent = (step / total) * 100;
+function tickProgress() {
+    if (displayPercent >= 100) return;
+    
+    if (isCatchingUp) {
+        // Fast mode: catching up to new step's minimum
+        const config = STEP_CONFIG[currentStep] || { min: 0, max: 100 };
+        if (displayPercent < config.min) {
+            // Move fast: 3-5% per tick
+            displayPercent = Math.min(config.min, displayPercent + 4);
+        } else {
+            // Caught up, switch to slow mode
+            isCatchingUp = false;
+        }
+    } else {
+        // Slow mode: creeping within current step
+        const config = STEP_CONFIG[currentStep] || { min: 0, max: 100 };
+        if (displayPercent < config.max) {
+            // Move slow: 0.3% per tick (~4% per second)
+            displayPercent = Math.min(config.max, displayPercent + 0.3);
+        }
+        // If at max, just wait for next step
+    }
+    
+    renderProgress(displayPercent, currentMessage);
+}
+
+function updateProgress(step, total, message, percent = null) {
+    currentMessage = message;
+    
+    // Complete - jump to 100%
+    if (percent === 100) {
+        displayPercent = 100;
+        targetPercent = 100;
+        renderProgress(100, message);
+        return;
+    }
+    
+    // Step changed - trigger catch-up mode
+    if (step !== currentStep) {
+        currentStep = step;
+        const config = STEP_CONFIG[step] || { min: 0, max: 100 };
+        
+        if (displayPercent < config.min) {
+            // Behind the new step's start - catch up fast
+            isCatchingUp = true;
+        }
+        // Target is this step's max
+        targetPercent = config.max;
+    }
+}
+
+function renderProgress(percent, message) {
     const circumference = 2 * Math.PI * 45;
     const offset = circumference - (percent / 100) * circumference;
     
     progressRing.style.strokeDashoffset = offset;
-    progressPercent.textContent = `${step}/${total}`;
-    progressText.textContent = `${step}/${total}`;
-    progressStatus.textContent = message || `Step ${step} of ${total}`;
+    progressPercent.textContent = `${Math.round(percent)}%`;
+    if (progressText) progressText.textContent = `${Math.round(percent)}%`;
+    progressStatus.textContent = message || `Processing...`;
 }
 
 // ============================================
@@ -407,10 +631,11 @@ function updateProgress(step, total, message) {
 function showPreview(preview) {
     const settings = preview.settings;
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+    const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
     
     previewImage.src = preview.url + '?t=' + preview.timestamp;
     previewCity.textContent = `${settings.city}, ${settings.country}`;
-    previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${settings.width}×${settings.height}"`;
+    previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
     
     renderMiniPreviews();
 }
@@ -471,33 +696,58 @@ async function handleGenerateFinal() {
     
     const settings = preview.settings;
     
-    showFinalProgress(settings);
-    simulateFinalProgress();
+    showFinalProgress(settings, preview.url);
     
     try {
-        const response = await fetch('/api/generate', {
+        // Start the async job
+        const startResponse = await fetch('/api/generate/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings)
         });
         
-        const result = await response.json();
+        const startResult = await startResponse.json();
         
-        if (!response.ok) {
-            throw new Error(result.detail || 'Generation failed');
+        if (!startResponse.ok) {
+            throw new Error(startResult.detail || 'Failed to start generation');
         }
         
-        completeFinalProgress();
-        await new Promise(r => setTimeout(r, 500));
+        const jobId = startResult.job_id;
         
-        closeFinalProgress();
-        showResult(result, settings);
-        updateStepIndicators(3);
+        // Poll for progress (same as preview)
+        let complete = false;
+        while (!complete) {
+            await new Promise(r => setTimeout(r, 300));
+            
+            const progressResponse = await fetch(`/api/progress/${jobId}`);
+            const progress = await progressResponse.json();
+            
+            // Update the step progress UI
+            updateFinalProgress(progress.step, progress.total || 6, progress.message);
+            
+            if (progress.status === 'complete') {
+                complete = true;
+                
+                completeFinalProgress();
+                await new Promise(r => setTimeout(r, 500));
+                
+                closeFinalProgress();
+                showResult({
+                    poster_url: progress.poster_url,
+                    filename: progress.filename || `poster_${jobId}.png`
+                }, settings);
+                updateStepIndicators(3);
+                showToast('High-resolution poster ready!', 'success');
+                
+            } else if (progress.status === 'error') {
+                throw new Error(progress.error || 'Generation failed');
+            }
+        }
         
     } catch (error) {
         console.error('Generation error:', error);
         closeFinalProgress();
-        alert(`Error: ${error.message}`);
+        showToast(error.message || 'Generation failed', 'error');
     }
 }
 
@@ -507,8 +757,23 @@ async function handleGenerateFinal() {
 
 let finalProgressInterval = null;
 
-function showFinalProgress(settings) {
+function showFinalProgress(settings, previewUrl) {
+    // Set preview image
+    const previewImg = document.getElementById('finalProgressPreview');
+    if (previewImg && previewUrl) {
+        previewImg.src = previewUrl;
+    }
+    
+    // Set location and meta info
     finalProgressCity.textContent = `${settings.city}, ${settings.country}`;
+    
+    const metaEl = document.getElementById('finalProgressMeta');
+    if (metaEl) {
+        const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+        const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
+        metaEl.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
+    }
+    
     finalProgressBar.style.width = '0%';
     
     document.querySelectorAll('#progressModal .progress-step').forEach(step => {
@@ -529,35 +794,29 @@ function closeFinalProgress() {
     }
 }
 
-function simulateFinalProgress() {
-    let currentStep = 0;
+function updateFinalProgress(stepNum, totalSteps, message) {
     const steps = document.querySelectorAll('#progressModal .progress-step');
-    const totalSteps = steps.length;
-    const stepDurations = [500, 3000, 2000, 2000, 5000, 2000];
     
-    function advanceStep() {
-        if (currentStep > 0 && currentStep <= totalSteps) {
-            const prevStep = steps[currentStep - 1];
-            prevStep.classList.remove('active');
-            prevStep.classList.add('complete');
-            prevStep.querySelector('.step-status').textContent = 'Done';
-        }
-        
-        if (currentStep < totalSteps) {
-            const step = steps[currentStep];
+    // Update progress bar
+    const progress = (stepNum / totalSteps) * 100;
+    finalProgressBar.style.width = `${progress}%`;
+    
+    // Update step indicators
+    steps.forEach((step, index) => {
+        const stepValue = index + 1;
+        if (stepValue < stepNum) {
+            step.classList.remove('active');
+            step.classList.add('complete');
+            step.querySelector('.step-status').textContent = 'Done';
+        } else if (stepValue === stepNum) {
             step.classList.add('active');
-            step.querySelector('.step-status').textContent = 'In progress...';
-            
-            const progress = ((currentStep + 0.5) / totalSteps) * 100;
-            finalProgressBar.style.width = `${progress}%`;
-            
-            currentStep++;
-            const duration = stepDurations[currentStep - 1] || 2000;
-            finalProgressInterval = setTimeout(advanceStep, duration);
+            step.classList.remove('complete');
+            step.querySelector('.step-status').textContent = message || 'In progress...';
+        } else {
+            step.classList.remove('active', 'complete');
+            step.querySelector('.step-status').textContent = 'Pending';
         }
-    }
-    
-    advanceStep();
+    });
 }
 
 function completeFinalProgress() {
@@ -581,10 +840,11 @@ function completeFinalProgress() {
 
 function showResult(result, settings) {
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+    const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
     
     resultImage.src = result.poster_url + '?t=' + Date.now();
     resultCity.textContent = settings.city;
-    resultTheme.textContent = `${themeName} • ${settings.width}×${settings.height}"`;
+    resultTheme.textContent = `${themeName} • ${sizeLabel}`;
     downloadBtn.href = result.poster_url;
     downloadBtn.download = result.filename;
     
@@ -595,4 +855,54 @@ function showResult(result, settings) {
 function closeResultModal() {
     resultModal.classList.remove('active');
     document.body.style.overflow = '';
+}
+
+// ============================================
+// Preview Zoom Modal
+// ============================================
+
+let currentZoom = 1;
+
+function openZoomModal() {
+    const zoomModal = document.getElementById('zoomModal');
+    const zoomImage = document.getElementById('zoomImage');
+    
+    if (!zoomModal || !zoomImage || !previewImage.src) return;
+    
+    // Reset zoom
+    currentZoom = 1;
+    zoomImage.src = previewImage.src;
+    zoomImage.style.transform = `scale(${currentZoom})`;
+    
+    zoomModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    
+    // Setup button handlers
+    document.getElementById('zoomIn').onclick = () => {
+        currentZoom = Math.min(3, currentZoom * 1.3);
+        zoomImage.style.transform = `scale(${currentZoom})`;
+    };
+    
+    document.getElementById('zoomOut').onclick = () => {
+        currentZoom = Math.max(0.5, currentZoom / 1.3);
+        zoomImage.style.transform = `scale(${currentZoom})`;
+    };
+    
+    // Keyboard shortcuts
+    document.onkeydown = (e) => {
+        if (!zoomModal.classList.contains('active')) return;
+        if (e.key === 'Escape') {
+            closeZoomModal();
+        }
+    };
+}
+
+function closeZoomModal() {
+    const zoomModal = document.getElementById('zoomModal');
+    
+    if (zoomModal) {
+        zoomModal.classList.remove('active');
+    }
+    document.body.style.overflow = '';
+    document.onkeydown = null;
 }

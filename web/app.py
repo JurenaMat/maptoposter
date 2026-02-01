@@ -13,6 +13,11 @@ Features:
 - Multi-preview comparison (up to 3)
 """
 
+# IMPORTANT: Set matplotlib backend to 'Agg' BEFORE any matplotlib imports
+# This is required for running matplotlib in background threads
+import matplotlib
+matplotlib.use('Agg')
+
 import asyncio
 import gc
 import json
@@ -96,8 +101,8 @@ class PosterRequest(BaseModel):
     country: str = Field(..., min_length=1, description="Country name")
     theme: str = Field(default="noir", description="Theme name")
     distance: int = Field(default=3000, ge=1000, le=20000, description="Map radius in meters")
-    width: float = Field(default=12, ge=3, le=24, description="Poster width in inches")
-    height: float = Field(default=16, ge=3, le=24, description="Poster height in inches")
+    width: float = Field(default=12, ge=3, le=32, description="Poster width in inches")
+    height: float = Field(default=16, ge=3, le=32, description="Poster height in inches")
 
 
 class PreviewRequest(PosterRequest):
@@ -119,10 +124,12 @@ class PosterResponse(BaseModel):
 jobs: dict = {}
 
 # Thread pool for running heavy generation tasks
-executor = ThreadPoolExecutor(max_workers=2)
+# Increased to 4 to handle multiple concurrent generations
+executor = ThreadPoolExecutor(max_workers=4)
 
-# Max distance for previews (to limit memory usage)
-MAX_PREVIEW_DISTANCE = 3000  # 3km max for previews (faster initial load)
+# Max distance for previews (to limit memory usage on deployed servers)
+# For local development, allow full range. For production, may need to reduce.
+MAX_PREVIEW_DISTANCE = 20000  # Allow up to 20km for previews
 
 # Progress steps for display
 PROGRESS_STEPS = {
@@ -212,47 +219,68 @@ async def get_examples():
 
 def create_poster_internal(
     city, country, point, dist, output_file, 
-    width=12, height=16, theme=None, fonts=None, dpi=300, progress_callback=None
+    width=12, height=16, theme=None, fonts=None, dpi=300, progress_callback=None,
+    skip_features=False
 ):
     """
     Internal poster generation with progress callbacks.
     
     Args:
         progress_callback: Function to call with (step_name, step_number, total_steps)
+        skip_features: If True, skip water/parks for faster preview generation
     """
     THEME = theme or load_theme("noir")
     create_map_poster.THEME = THEME
     
-    def update_progress(step_name, step_num, total=6):
-        if progress_callback:
-            progress_callback(step_name, step_num, total)
-        print(f"  [{step_num}/{total}] {step_name}")
+    total_steps = 4 if skip_features else 6
     
-    update_progress("Looking up location", 1)
+    # Start percentages for each step (based on typical timing)
+    # Streets (step 2) takes ~45% of total time
+    if skip_features:
+        # Without water/parks: location 0-10, streets 10-85, render 85-95, save 95-100
+        step_percentages = {1: 2, 2: 10, 3: 88, 4: 96}
+    else:
+        # Full: location 0-8, streets 8-52, water 52-72, parks 72-88, render 88-96, save 96-100
+        step_percentages = {1: 2, 2: 8, 3: 52, 4: 72, 5: 88, 6: 96}
+    
+    def update_progress(step_name, step_num):
+        if progress_callback:
+            progress_callback(step_name, step_num, total_steps, step_percentages.get(step_num, 0))
+        print(f"  [{step_num}/{total_steps}] {step_name}")
+    
+    update_progress("Searching for your location", 1)
     
     # Calculate compensated distance for viewport
     compensated_dist = dist * (max(height, width) / min(height, width)) / 4
     
-    update_progress("Downloading street network", 2)
+    update_progress("Loading all the streets", 2)
     g = fetch_graph(point, compensated_dist)
     if g is None:
         raise RuntimeError("Failed to retrieve street network data.")
     
-    update_progress("Downloading water features", 3)
-    water = fetch_features(
-        point, compensated_dist,
-        tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
-        name="water"
-    )
+    water = None
+    parks = None
     
-    update_progress("Downloading parks", 4)
-    parks = fetch_features(
-        point, compensated_dist,
-        tags={"leisure": "park", "landuse": "grass"},
-        name="parks"
-    )
-    
-    update_progress("Rendering map", 5)
+    if skip_features:
+        # Fast path: skip water and parks for preview
+        update_progress("Putting it all together", 3)
+    else:
+        # Full path: include water and parks
+        update_progress("Adding water elements", 3)
+        water = fetch_features(
+            point, compensated_dist,
+            tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
+            name="water"
+        )
+        
+        update_progress("Adding parks and greenery", 4)
+        parks = fetch_features(
+            point, compensated_dist,
+            tags={"leisure": "park", "landuse": "grass"},
+            name="parks"
+        )
+        
+        update_progress("Putting it all together", 5)
     
     # Setup plot
     fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
@@ -350,12 +378,8 @@ def create_poster_internal(
     ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
             linewidth=1 * scale_factor, zorder=11)
     
-    # Attribution
-    ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes,
-            color=THEME["text"], alpha=0.5, ha="right", va="bottom",
-            fontproperties=font_attr, zorder=11)
-    
-    update_progress("Saving image", 6)
+    save_step = 4 if skip_features else 6
+    update_progress("Finishing up", save_step)
     plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
                 bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
@@ -380,7 +404,8 @@ async def start_preview(request: PreviewRequest):
     
     # Create job
     job_id = uuid.uuid4().hex[:8]
-    city_slug = request.city.lower().replace(" ", "_").replace(",", "")
+    # Sanitize city name for filename (remove path-unsafe characters)
+    city_slug = request.city.lower().replace(" ", "_").replace(",", "").replace("/", "-").replace("\\", "-").replace(":", "")
     filename = f"preview_{city_slug}_{request.theme}_{job_id}.png"
     
     jobs[job_id] = {
@@ -413,13 +438,14 @@ async def start_preview(request: PreviewRequest):
             preview_height = request.height / 2
             preview_distance = min(request.distance, MAX_PREVIEW_DISTANCE)
             
-            # Progress callback
-            def progress_callback(step_name, step_num, total):
+            # Progress callback with percentage
+            def progress_callback(step_name, step_num, total, percent=0):
                 jobs[job_id].update({
                     "step": step_num,
                     "total": total,
                     "message": step_name,
-                    "status": "running"
+                    "status": "running",
+                    "percent": percent
                 })
             
             # Run in thread pool
@@ -438,6 +464,7 @@ async def start_preview(request: PreviewRequest):
                     fonts=fonts,
                     dpi=72,
                     progress_callback=progress_callback,
+                    skip_features=False,  # Include water/parks for better visuals
                 )
             )
             
@@ -447,6 +474,7 @@ async def start_preview(request: PreviewRequest):
                 "step": 6,
                 "status": "complete",
                 "message": "Done!",
+                "percent": 100,
                 "preview_url": f"/previews/{filename}",
                 "coords": list(coords)
             })
@@ -487,79 +515,122 @@ async def generate_preview_sync(request: PreviewRequest):
     }
 
 
-@app.post("/api/generate")
-async def generate_final(request: PosterRequest):
-    """Generate final high-resolution poster."""
+@app.post("/api/generate/start")
+async def start_final_generation(request: PosterRequest):
+    """Start final high-resolution poster generation (non-blocking)."""
     job_id = uuid.uuid4().hex[:8]
-    jobs[job_id] = {"status": "pending", "progress": 0, "step": "Starting"}
     
     print(f"✓ Final generation request: {request.city}, {request.country} [job: {job_id}]")
     
-    try:
-        available_themes = get_available_themes()
-        if request.theme not in available_themes:
-            raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
-        
+    # Validate theme upfront
+    available_themes = get_available_themes()
+    if request.theme not in available_themes:
+        raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
+    
+    # Sanitize city name for filename
+    city_slug = re.sub(r'[\\/:*?"<>|]', '-', request.city.lower().replace(" ", "_").replace(",", ""))
+    filename = f"{city_slug}_{request.theme}_{job_id}.png"
+    
+    jobs[job_id] = {
+        "step": 0,
+        "total": 6,
+        "status": "starting",
+        "message": "Starting...",
+        "poster_url": None,
+        "filename": filename,
+        "error": None
+    }
+    
+    async def run_generation():
         try:
-            coords = get_coordinates(request.city, request.country)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        
-        theme = load_theme(request.theme)
-        fonts = load_fonts()
-        
-        city_slug = request.city.lower().replace(" ", "_").replace(",", "")
-        filename = f"{city_slug}_{request.theme}_{job_id}.png"
-        output_path = posters_path / filename
-        
-        def progress_callback(step_name, step_num, total):
-            jobs[job_id] = {
-                "status": "processing",
-                "progress": int((step_num / total) * 100),
-                "step": step_name
-            }
-        
-        # Limit distance to 8km for high-res to stay within memory limits
-        final_distance = min(request.distance, 8000)
-        
-        # Run in thread pool
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            executor,
-            lambda: create_poster_internal(
-                city=request.city,
-                country=request.country,
-                point=coords,
-                dist=final_distance,
-                output_file=str(output_path),
-                width=request.width,
-                height=request.height,
-                theme=theme,
-                fonts=fonts,
-                dpi=200,  # Reduced from 300 to save memory
-                progress_callback=progress_callback,
+            jobs[job_id].update({"step": 1, "message": "Finding location", "status": "running"})
+            
+            try:
+                coords = get_coordinates(request.city, request.country)
+            except ValueError as e:
+                jobs[job_id].update({"status": "error", "error": str(e)})
+                return
+            
+            theme = load_theme(request.theme)
+            fonts = load_fonts()
+            
+            output_path = posters_path / filename
+            
+            def progress_callback(step_name, step_num, total, percent=0):
+                jobs[job_id].update({
+                    "step": step_num,
+                    "total": total,
+                    "message": step_name,
+                    "status": "running",
+                    "percent": percent
+                })
+            
+            # Use same distance as preview - no artificial limit
+            final_distance = request.distance
+            
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                executor,
+                lambda: create_poster_internal(
+                    city=request.city,
+                    country=request.country,
+                    point=coords,
+                    dist=final_distance,
+                    output_file=str(output_path),
+                    width=request.width,
+                    height=request.height,
+                    theme=theme,
+                    fonts=fonts,
+                    dpi=150,  # Balanced: good for print, faster generation
+                    progress_callback=progress_callback,
+                )
             )
-        )
-        
-        # Force garbage collection
-        gc.collect()
-        
-        jobs[job_id] = {"status": "complete", "progress": 100, "step": "Done"}
-        
-        return PosterResponse(
-            success=True,
-            message=f"Poster generated for {request.city}",
-            poster_url=f"/posters/{filename}",
-            filename=filename,
-            coords=list(coords),
-        )
-        
-    except HTTPException:
-        jobs[job_id] = {"status": "error", "progress": 0, "step": "Failed"}
-        raise
-    except Exception as e:
-        jobs[job_id] = {"status": "error", "progress": 0, "step": str(e)}
-        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+            
+            gc.collect()
+            
+            jobs[job_id].update({
+                "step": 6,
+                "status": "complete",
+                "message": "Done!",
+                "percent": 100,
+                "poster_url": f"/posters/{filename}",
+                "coords": list(coords)
+            })
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            jobs[job_id].update({"status": "error", "error": str(e)})
+    
+    # Fire and forget - don't await
+    asyncio.create_task(run_generation())
+    
+    return {"job_id": job_id, "status": "started"}
+
+
+@app.post("/api/generate")
+async def generate_final_sync(request: PosterRequest):
+    """Synchronous final generation (backwards compatible) - starts job and waits."""
+    result = await start_final_generation(request)
+    job_id = result["job_id"]
+    
+    # Poll until complete
+    while True:
+        job = jobs.get(job_id, {})
+        if job.get("status") in ["complete", "error"]:
+            break
+        await asyncio.sleep(0.1)
+    
+    if job.get("status") == "error":
+        raise HTTPException(status_code=500, detail=job.get("error", "Generation failed"))
+    
+    return PosterResponse(
+        success=True,
+        message=f"Poster generated for {request.city}",
+        poster_url=job["poster_url"],
+        filename=job["filename"],
+        coords=job.get("coords", []),
+    )
 
 
 @app.get("/api/progress/{job_id}")
@@ -571,8 +642,8 @@ async def get_progress(job_id: str):
 
 
 @app.get("/api/geocode")
-async def geocode_city(q: str):
-    """Geocode a city name using Nominatim (for autocomplete)."""
+async def geocode_location(q: str):
+    """Geocode any location (city, address, place) using Nominatim."""
     import requests
     
     try:
@@ -582,8 +653,8 @@ async def geocode_city(q: str):
                 "q": q,
                 "format": "json",
                 "addressdetails": 1,
-                "limit": 5,
-                "featuretype": "city",
+                "limit": 8,
+                # No featuretype filter - allows addresses, streets, POIs, etc.
             },
             headers={"User-Agent": "MapToPoster/1.0"},
             timeout=10,
@@ -591,29 +662,68 @@ async def geocode_city(q: str):
         response.raise_for_status()
         
         results = []
+        seen = set()  # Avoid duplicates
+        
         for item in response.json():
             address = item.get("address", {})
+            
+            # Build a meaningful location name
+            # Priority: street address > place name > city
+            street = address.get("road") or address.get("street")
+            house_number = address.get("house_number")
+            suburb = address.get("suburb") or address.get("neighbourhood") or address.get("quarter")
             city = (
                 address.get("city") or 
                 address.get("town") or 
                 address.get("village") or 
                 address.get("municipality") or
-                item.get("name", "")
+                address.get("county") or
+                ""
             )
             country = address.get("country", "")
             
-            if city and country:
-                results.append({
-                    "city": city,
-                    "country": country,
-                    "display": f"{city}, {country}",
-                    "lat": float(item["lat"]),
-                    "lon": float(item["lon"]),
-                })
+            # Build location name based on what we have
+            if street and house_number:
+                location = f"{street} {house_number}"
+                if suburb:
+                    location = f"{location}, {suburb}"
+            elif street:
+                location = street
+                if suburb:
+                    location = f"{location}, {suburb}"
+            elif item.get("name"):
+                location = item.get("name")
+            else:
+                location = city
+            
+            # Skip if no meaningful location or country
+            if not location or not country:
+                continue
+            
+            # Create display name
+            if city and city != location:
+                display = f"{location}, {city}, {country}"
+            else:
+                display = f"{location}, {country}"
+            
+            # Skip duplicates
+            key = (location.lower(), city.lower(), country.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            
+            results.append({
+                "city": location,  # Use location as "city" for compatibility
+                "country": f"{city}, {country}" if city and city != location else country,
+                "display": display,
+                "lat": float(item["lat"]),
+                "lon": float(item["lon"]),
+            })
         
         return results
         
-    except Exception:
+    except Exception as e:
+        print(f"Geocode error: {e}")
         return []
 
 

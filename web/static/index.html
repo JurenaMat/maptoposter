@@ -12,13 +12,15 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <!-- Hero Section with Rotating Background -->
+    <!-- Hero Section -->
     <header class="hero">
-        <!-- Rotating poster carousel behind content -->
-        <div class="hero-carousel" id="heroCarousel">
-            <!-- Images loaded by JS -->
+        <!-- Background showcase -->
+        <div class="hero-backdrop">
+            <div class="showcase-track" id="showcaseTrack">
+                <!-- Populated by JS -->
+            </div>
         </div>
-        <div class="hero-overlay"></div>
+        <div class="hero-backdrop-overlay"></div>
         
         <nav class="nav">
             <div class="logo">MapToPoster</div>
@@ -44,6 +46,24 @@
             </svg>
         </div>
     </header>
+    
+    <!-- Image Preview Modal -->
+    <div class="preview-modal" id="previewModal">
+        <div class="preview-modal-backdrop"></div>
+        <div class="preview-modal-content">
+            <button class="preview-modal-close" id="previewModalClose">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+            <img id="previewModalImage" src="" alt="Preview">
+            <div class="preview-modal-info">
+                <h3 id="previewModalCity"></h3>
+                <p id="previewModalDesc"></p>
+                <a href="/generate" class="btn btn-primary" id="previewModalCta">Create Similar</a>
+            </div>
+        </div>
+    </div>
 
     <!-- Examples Gallery -->
     <section class="examples" id="examples">

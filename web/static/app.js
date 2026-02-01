@@ -1,84 +1,121 @@
 /**
  * MapToPoster Homepage
- * Hero carousel, gallery, and navigation
+ * Background showcase, gallery with preview modal
  */
 
 const gallery = document.getElementById('gallery');
-const heroCarousel = document.getElementById('heroCarousel');
+const showcaseTrack = document.getElementById('showcaseTrack');
+const previewModal = document.getElementById('previewModal');
+const previewModalImage = document.getElementById('previewModalImage');
+const previewModalCity = document.getElementById('previewModalCity');
+const previewModalDesc = document.getElementById('previewModalDesc');
+const previewModalCta = document.getElementById('previewModalCta');
+const previewModalClose = document.getElementById('previewModalClose');
 
-let carouselImages = [];
-let currentCarouselIndex = 0;
+let examples = [];
 
 document.addEventListener('DOMContentLoaded', () => {
     loadExamples();
+    setupModalListeners();
 });
 
 async function loadExamples() {
     try {
         const response = await fetch('/api/examples');
-        const examples = await response.json();
+        examples = await response.json();
         
-        // Setup hero carousel with poster images
-        setupHeroCarousel(examples);
+        // Setup background showcase
+        setupShowcase(examples);
         
-        // Render gallery with optimized lazy loading
-        gallery.innerHTML = examples.map(example => `
-            <div class="gallery-item" data-city="${example.city}" data-country="${example.country}" data-theme="${example.theme}">
-                <div class="gallery-item-placeholder"></div>
-                <img 
-                    src="${example.image}" 
-                    data-preview="${example.preview || example.image}"
-                    alt="${example.city} map poster" 
-                    loading="lazy"
-                    decoding="async"
-                    fetchpriority="low"
-                    onload="this.parentElement.classList.add('loaded')"
-                >
-                <div class="gallery-item-overlay">
-                    <div class="gallery-item-city">${example.city}</div>
-                    <div class="gallery-item-theme">${example.description}</div>
-                </div>
-            </div>
-        `).join('');
+        // Render gallery
+        renderGallery(examples);
         
-        // Click on gallery item -> go to generate page with city pre-filled
-        document.querySelectorAll('.gallery-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const city = item.dataset.city;
-                const country = item.dataset.country;
-                const theme = item.dataset.theme;
-                
-                window.location.href = `/generate?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&theme=${encodeURIComponent(theme)}`;
-            });
-        });
     } catch (error) {
         console.error('Failed to load examples:', error);
     }
 }
 
-function setupHeroCarousel(examples) {
-    if (!heroCarousel || examples.length === 0) return;
+function setupShowcase(items) {
+    if (!showcaseTrack || items.length === 0) return;
     
-    carouselImages = examples.map(e => e.image);
+    // Triple the items for seamless infinite scroll
+    const allItems = [...items, ...items, ...items];
     
-    // Create carousel slides
-    heroCarousel.innerHTML = carouselImages.map((img, index) => `
-        <div class="hero-carousel-image ${index === 0 ? 'active' : ''}">
-            <img src="${img}" alt="Map poster">
+    showcaseTrack.innerHTML = allItems.map((example, index) => `
+        <div class="showcase-item" data-index="${index % items.length}">
+            <img src="${example.image}" alt="${example.city}" loading="eager">
         </div>
     `).join('');
     
-    // Start rotation
-    if (carouselImages.length > 1) {
-        setInterval(rotateCarousel, 5000);
-    }
+    // Add click handlers for preview
+    showcaseTrack.querySelectorAll('.showcase-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = parseInt(item.dataset.index);
+            openPreview(examples[idx]);
+        });
+    });
 }
 
-function rotateCarousel() {
-    const slides = heroCarousel.querySelectorAll('.hero-carousel-image');
-    if (slides.length === 0) return;
+function renderGallery(items) {
+    if (!gallery) return;
     
-    slides[currentCarouselIndex].classList.remove('active');
-    currentCarouselIndex = (currentCarouselIndex + 1) % slides.length;
-    slides[currentCarouselIndex].classList.add('active');
+    gallery.innerHTML = items.map((example, index) => `
+        <div class="gallery-item" data-index="${index}">
+            <div class="gallery-item-placeholder"></div>
+            <img 
+                src="${example.image}" 
+                alt="${example.city} map poster" 
+                loading="lazy"
+                decoding="async"
+                fetchpriority="low"
+                onload="this.parentElement.classList.add('loaded')"
+            >
+            <div class="gallery-item-overlay">
+                <div class="gallery-item-city">${example.city}</div>
+                <div class="gallery-item-theme">${example.description}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    // Click to preview
+    gallery.querySelectorAll('.gallery-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const idx = parseInt(item.dataset.index);
+            openPreview(examples[idx]);
+        });
+    });
+}
+
+function openPreview(example) {
+    if (!previewModal || !example) return;
+    
+    // Use the larger preview image if available
+    previewModalImage.src = example.preview || example.image;
+    previewModalCity.textContent = `${example.city}, ${example.country}`;
+    previewModalDesc.textContent = example.description;
+    previewModalCta.href = `/generate?city=${encodeURIComponent(example.city)}&country=${encodeURIComponent(example.country)}&theme=${encodeURIComponent(example.theme)}`;
+    
+    previewModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closePreview() {
+    previewModal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function setupModalListeners() {
+    if (!previewModal) return;
+    
+    previewModalClose?.addEventListener('click', closePreview);
+    
+    previewModal.querySelector('.preview-modal-backdrop')?.addEventListener('click', closePreview);
+    
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && previewModal.classList.contains('active')) {
+            closePreview();
+        }
+    });
 }

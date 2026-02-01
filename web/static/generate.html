@@ -55,7 +55,7 @@
                             <input 
                                 type="text" 
                                 id="cityInput" 
-                                placeholder="Search for a city..."
+                                placeholder="Search city or address..."
                                 autocomplete="off"
                             >
                             <div class="input-icon">
@@ -80,60 +80,123 @@
                     </div>
                 </div>
 
-                <!-- Options Row -->
+                <!-- Map Radius -->
                 <div class="config-card">
                     <div class="config-card-header">
                         <span class="config-num">3</span>
-                        <h2>Options</h2>
+                        <h2>Map Radius</h2>
                     </div>
-                    <div class="options-grid">
-                        <div class="form-group">
-                            <label>Map Radius</label>
-                            <div class="radius-gallery" id="radiusGallery">
-                                <div class="radius-option" data-value="2000">
-                                    <div class="radius-preview">
-                                        <svg viewBox="0 0 60 60">
-                                            <circle cx="30" cy="30" r="8" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
-                                        </svg>
-                                    </div>
-                                    <span class="radius-label">2 km</span>
-                                    <span class="radius-desc">Walkable</span>
-                                </div>
-                                <div class="radius-option selected" data-value="3000">
-                                    <div class="radius-preview">
-                                        <svg viewBox="0 0 60 60">
-                                            <circle cx="30" cy="30" r="12" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
-                                        </svg>
-                                    </div>
-                                    <span class="radius-label">3 km</span>
-                                    <span class="radius-desc">Neighborhood</span>
-                                </div>
-                                <div class="radius-option" data-value="5000">
-                                    <div class="radius-preview">
-                                        <svg viewBox="0 0 60 60">
-                                            <circle cx="30" cy="30" r="20" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
-                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
-                                        </svg>
-                                    </div>
-                                    <span class="radius-label">5 km</span>
-                                    <span class="radius-desc">Downtown</span>
-                                </div>
+                    <p class="config-subtitle">How much of the city do you want to capture?</p>
+                    <div class="radius-gallery-images" id="radiusGallery">
+                        <div class="radius-image-option" data-value="3000">
+                            <div class="radius-image-preview">
+                                <img src="/static/examples/radius_3km.webp" alt="3km radius" loading="lazy">
                             </div>
-                            <input type="hidden" id="distanceSelect" value="3000">
+                            <div class="radius-image-info">
+                                <span class="radius-label">3 km</span>
+                                <span class="radius-desc">Neighborhood</span>
+                            </div>
+                            <div class="radius-check">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Poster Size</label>
-                            <select id="sizeSelect">
-                                <option value="21x30" selected>21×30 cm — A4</option>
-                                <option value="30x40">30×40 cm — Standard</option>
-                                <option value="40x50">40×50 cm — Medium</option>
-                                <option value="50x70">50×70 cm — Large</option>
-                                <option value="30x30">30×30 cm — Square</option>
-                            </select>
+                        <div class="radius-image-option selected" data-value="5000">
+                            <div class="radius-image-preview">
+                                <img src="/static/examples/radius_5km.webp" alt="5km radius" loading="lazy">
+                            </div>
+                            <div class="radius-image-info">
+                                <span class="radius-label">5 km</span>
+                                <span class="radius-desc">City center</span>
+                            </div>
+                            <div class="radius-check">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="radius-image-option" data-value="10000">
+                            <div class="radius-image-preview">
+                                <img src="/static/examples/radius_10km.webp" alt="10km radius" loading="lazy">
+                            </div>
+                            <div class="radius-image-info">
+                                <span class="radius-label">10 km</span>
+                                <span class="radius-desc">Downtown</span>
+                            </div>
+                            <div class="radius-check">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="radius-image-option" data-value="15000">
+                            <div class="radius-image-preview">
+                                <img src="/static/examples/radius_15km.webp" alt="15km radius" loading="lazy">
+                            </div>
+                            <div class="radius-image-info">
+                                <span class="radius-label">15 km</span>
+                                <span class="radius-desc">Metro area</span>
+                            </div>
+                            <div class="radius-check">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="radius-image-option" data-value="20000">
+                            <div class="radius-image-preview">
+                                <img src="/static/examples/radius_20km.webp" alt="20km radius" loading="lazy">
+                            </div>
+                            <div class="radius-image-info">
+                                <span class="radius-label">20 km</span>
+                                <span class="radius-desc">Full city</span>
+                            </div>
+                            <div class="radius-check">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
                         </div>
                     </div>
+                    <input type="hidden" id="distanceSelect" value="5000">
+                </div>
+
+                <!-- Poster Size -->
+                <div class="config-card">
+                    <div class="config-card-header">
+                        <span class="config-num">4</span>
+                        <h2>Poster Size</h2>
+                    </div>
+                    <p class="config-subtitle">Choose a print-ready size</p>
+                    <div class="size-gallery" id="sizeGallery">
+                        <div class="size-option" data-value="21x30">
+                            <div class="size-visual size-a4"></div>
+                            <span class="size-label">21×30 cm</span>
+                            <span class="size-desc">A4 Small</span>
+                        </div>
+                        <div class="size-option selected" data-value="30x40">
+                            <div class="size-visual size-standard"></div>
+                            <span class="size-label">30×40 cm</span>
+                            <span class="size-desc">Standard</span>
+                        </div>
+                        <div class="size-option" data-value="40x50">
+                            <div class="size-visual size-medium"></div>
+                            <span class="size-label">40×50 cm</span>
+                            <span class="size-desc">Medium</span>
+                        </div>
+                        <div class="size-option" data-value="50x70">
+                            <div class="size-visual size-large"></div>
+                            <span class="size-label">50×70 cm</span>
+                            <span class="size-desc">Large</span>
+                        </div>
+                    </div>
+                    <select id="sizeSelect" style="display: none;">
+                        <option value="21x30">21×30 cm</option>
+                        <option value="30x40" selected>30×40 cm</option>
+                        <option value="40x50">40×50 cm</option>
+                        <option value="50x70">50×70 cm</option>
+                    </select>
                 </div>
 
                 <!-- Generate Button -->
@@ -156,9 +219,17 @@
             <div class="preview-container">
                 <!-- Main Preview -->
                 <div class="preview-main">
-                    <div class="preview-image-wrapper">
+                    <div class="preview-image-wrapper" id="previewWrapper">
                         <img id="previewImage" src="" alt="Preview">
                         <div class="preview-badge">Preview</div>
+                        <div class="preview-zoom-hint">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                                <path d="M11 8v6M8 11h6"/>
+                            </svg>
+                            Click to zoom
+                        </div>
                     </div>
                 </div>
 
@@ -174,7 +245,7 @@
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                             </svg>
-                            Generate High-Resolution
+                            Download in High Resolution
                         </button>
                         <p class="action-hint">300 DPI print-ready quality</p>
                     </div>
@@ -217,7 +288,8 @@
                     </svg>
                     <span class="progress-percent" id="progressPercent">0%</span>
                 </div>
-                <p class="progress-status" id="progressStatus">Generating preview...</p>
+                <p class="progress-status" id="progressStatus">Starting...</p>
+                <p class="progress-hint">Typically takes less than 15 seconds</p>
             </div>
         </div>
     </main>
@@ -225,11 +297,17 @@
     <!-- Final Generation Modal -->
     <div class="modal" id="progressModal">
         <div class="modal-backdrop"></div>
-        <div class="modal-content modal-progress">
+        <div class="modal-content modal-progress modal-with-preview">
+            <div class="progress-preview-col">
+                <img id="finalProgressPreview" src="" alt="Preview">
+                <div class="progress-preview-info">
+                    <p id="finalProgressCity">City, Country</p>
+                    <p id="finalProgressMeta" class="progress-preview-meta">Theme • Radius • Size</p>
+                </div>
+            </div>
             <div class="progress-container">
                 <div class="progress-header">
                     <h3>Generating High-Resolution</h3>
-                    <p id="finalProgressCity">City, Country</p>
                 </div>
                 
                 <div class="progress-steps">
@@ -296,6 +374,33 @@
                         Create Another Poster
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zoom Modal for Preview -->
+    <div class="modal" id="zoomModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content modal-zoom">
+            <div class="zoom-controls">
+                <button class="zoom-btn" id="zoomIn" title="Zoom in">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                    </svg>
+                </button>
+                <button class="zoom-btn" id="zoomOut" title="Zoom out">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M8 11h6"/>
+                    </svg>
+                </button>
+                <button class="zoom-btn zoom-close" id="zoomModalClose" title="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="zoom-container">
+                <img id="zoomImage" src="" alt="Zoomed preview">
             </div>
         </div>
     </div>
