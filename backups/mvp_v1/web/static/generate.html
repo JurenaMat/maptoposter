@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<!-- MapToPoster MVP v1.0 - 2026-02-01 -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="version" content="MVP v1.0">
+    <title>Create Your Poster — MapToPoster</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/generate.css">
+</head>
+<body class="generate-page">
+    <!-- Header -->
+    <header class="generate-header">
+        <a href="/" class="logo">MapToPoster</a>
+        <div class="header-steps">
+            <div class="step-indicator active" data-step="1">
+                <span class="step-num">1</span>
+                <span class="step-label">Configure</span>
+            </div>
+            <div class="step-divider"></div>
+            <div class="step-indicator" data-step="2">
+                <span class="step-num">2</span>
+                <span class="step-label">Preview</span>
+            </div>
+            <div class="step-divider"></div>
+            <div class="step-indicator" data-step="3">
+                <span class="step-num">3</span>
+                <span class="step-label">Download</span>
+            </div>
+        </div>
+        <div class="header-spacer"></div>
+    </header>
+
+    <main class="generate-main">
+        <!-- Step 1: Configure -->
+        <section class="step-section" id="step1" data-active="true">
+            <div class="step-container">
+                <div class="step-header">
+                    <h1>Create Your Poster</h1>
+                    <p>Choose a city and customize your design</p>
+                </div>
+
+                <!-- City Input -->
+                <div class="config-card">
+                    <div class="config-card-header">
+                        <span class="config-num">1</span>
+                        <h2>Location</h2>
+                    </div>
+                    <div class="form-group">
+                        <div class="autocomplete-wrapper">
+                            <input 
+                                type="text" 
+                                id="cityInput" 
+                                placeholder="Search for a city..."
+                                autocomplete="off"
+                            >
+                            <div class="input-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/>
+                                    <path d="M21 21l-4.35-4.35"/>
+                                </svg>
+                            </div>
+                            <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Theme Gallery -->
+                <div class="config-card">
+                    <div class="config-card-header">
+                        <span class="config-num">2</span>
+                        <h2>Theme</h2>
+                    </div>
+                    <div class="theme-gallery" id="themeGallery">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Options Row -->
+                <div class="config-card">
+                    <div class="config-card-header">
+                        <span class="config-num">3</span>
+                        <h2>Options</h2>
+                    </div>
+                    <div class="options-grid">
+                        <div class="form-group">
+                            <label>Map Radius</label>
+                            <select id="distanceSelect">
+                                <option value="5000">5 km — Neighborhood</option>
+                                <option value="8000">8 km — Downtown</option>
+                                <option value="10000" selected>10 km — City Center</option>
+                                <option value="15000">15 km — Greater City</option>
+                                <option value="20000">20 km — Metro Area</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Poster Size</label>
+                            <select id="sizeSelect">
+                                <option value="12x16" selected>12×16" — Standard</option>
+                                <option value="11x14">11×14" — Medium</option>
+                                <option value="18x24">18×24" — Large</option>
+                                <option value="8x10">8×10" — Small</option>
+                                <option value="12x12">12×12" — Square</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generate Button -->
+                <div class="config-actions">
+                    <button class="btn btn-primary btn-large btn-full" id="generateBtn">
+                        <span class="btn-text">Generate Preview</span>
+                        <span class="btn-loading">
+                            <svg class="spinner" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                            </svg>
+                            <span id="progressText">0%</span>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 2: Preview -->
+        <section class="step-section" id="step2" data-active="false">
+            <div class="preview-container">
+                <!-- Main Preview -->
+                <div class="preview-main">
+                    <div class="preview-image-wrapper">
+                        <img id="previewImage" src="" alt="Preview">
+                        <div class="preview-badge">Preview</div>
+                    </div>
+                </div>
+
+                <!-- Preview Actions -->
+                <div class="preview-sidebar">
+                    <div class="preview-info">
+                        <h2 id="previewCity">City Name</h2>
+                        <p id="previewMeta">Theme • 10km • 12×16"</p>
+                    </div>
+
+                    <div class="preview-actions-main">
+                        <button class="btn btn-primary btn-large btn-full" id="generateFinalBtn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                            </svg>
+                            Generate High-Resolution
+                        </button>
+                        <p class="action-hint">300 DPI print-ready quality</p>
+                    </div>
+
+                    <div class="preview-divider">
+                        <span>or</span>
+                    </div>
+
+                    <div class="preview-actions-alt">
+                        <h3>Not quite right?</h3>
+                        <p>Try a different theme, radius, or size. You can generate up to <strong>3 previews</strong> to compare.</p>
+                        
+                        <button class="btn btn-secondary btn-full" id="editConfigBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            Edit & Regenerate
+                        </button>
+                    </div>
+
+                    <!-- Previous Previews -->
+                    <div class="previous-previews" id="previousPreviews" style="display: none;">
+                        <h4>Previous Versions</h4>
+                        <div class="previews-mini-grid" id="previewsMiniGrid">
+                            <!-- Mini preview cards -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-card">
+                <div class="progress-ring">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="progress-ring-bg" cx="50" cy="50" r="45"/>
+                        <circle class="progress-ring-fill" id="progressRing" cx="50" cy="50" r="45"/>
+                    </svg>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+                <p class="progress-status" id="progressStatus">Generating preview...</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Final Generation Modal -->
+    <div class="modal" id="progressModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content modal-progress">
+            <div class="progress-container">
+                <div class="progress-header">
+                    <h3>Generating High-Resolution</h3>
+                    <p id="finalProgressCity">City, Country</p>
+                </div>
+                
+                <div class="progress-steps">
+                    <div class="progress-step" data-step="1">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                        <div class="step-info"><span class="step-title">Looking up location</span><span class="step-status">Pending</span></div>
+                    </div>
+                    <div class="progress-step" data-step="2">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+                        <div class="step-info"><span class="step-title">Downloading streets</span><span class="step-status">Pending</span></div>
+                    </div>
+                    <div class="progress-step" data-step="3">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+                        <div class="step-info"><span class="step-title">Downloading water</span><span class="step-status">Pending</span></div>
+                    </div>
+                    <div class="progress-step" data-step="4">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+                        <div class="step-info"><span class="step-title">Downloading parks</span><span class="step-status">Pending</span></div>
+                    </div>
+                    <div class="progress-step" data-step="5">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+                        <div class="step-info"><span class="step-title">Rendering map</span><span class="step-status">Pending</span></div>
+                    </div>
+                    <div class="progress-step" data-step="6">
+                        <div class="step-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+                        <div class="step-info"><span class="step-title">Saving high-res image</span><span class="step-status">Pending</span></div>
+                    </div>
+                </div>
+                
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="finalProgressBar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div class="modal" id="resultModal">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="resultModalClose">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+            
+            <div class="modal-body">
+                <div class="result-preview">
+                    <img id="resultImage" src="" alt="Generated poster">
+                </div>
+                <div class="result-info">
+                    <span class="section-tag success-tag">Complete!</span>
+                    <h3 id="resultCity">City Name</h3>
+                    <p id="resultTheme">Theme</p>
+                    
+                    <a href="#" class="btn btn-primary btn-full" id="downloadBtn" download>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                        Download High-Res PNG
+                    </a>
+                    
+                    <button class="btn btn-secondary btn-full" id="createAnother">
+                        Create Another Poster
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/generate.js"></script>
+</body>
+</html>

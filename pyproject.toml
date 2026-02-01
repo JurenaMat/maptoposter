@@ -41,6 +41,9 @@ dependencies = [
     "tqdm==4.67.1",
     "tzdata==2025.3",
     "urllib3==2.6.3",
+    # Web dependencies
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [build-system]
