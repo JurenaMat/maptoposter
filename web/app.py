@@ -93,7 +93,7 @@ class PosterRequest(BaseModel):
     city: str = Field(..., min_length=1, description="City name")
     country: str = Field(..., min_length=1, description="Country name")
     theme: str = Field(default="noir", description="Theme name")
-    distance: int = Field(default=10000, ge=4000, le=20000, description="Map radius in meters")
+    distance: int = Field(default=3000, ge=1000, le=20000, description="Map radius in meters")
     width: float = Field(default=12, ge=3, le=24, description="Poster width in inches")
     height: float = Field(default=16, ge=3, le=24, description="Poster height in inches")
 

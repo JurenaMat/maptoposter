@@ -302,7 +302,11 @@ async function handleGenerate() {
         const startResult = await startResponse.json();
         
         if (!startResponse.ok) {
-            throw new Error(startResult.detail || 'Failed to start preview');
+            const errorDetail = startResult.detail;
+            const errorMsg = Array.isArray(errorDetail) 
+                ? errorDetail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ')
+                : (errorDetail || 'Failed to start preview');
+            throw new Error(errorMsg);
         }
         
         const jobId = startResult.job_id;
@@ -342,7 +346,8 @@ async function handleGenerate() {
         
     } catch (error) {
         console.error('Preview error:', error);
-        alert(`Error: ${error.message}`);
+        const errorMsg = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+        alert(`Error: ${errorMsg}`);
         hideLoading();
     } finally {
         generateBtn.classList.remove('loading');
