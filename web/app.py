@@ -14,6 +14,7 @@ Features:
 """
 
 import asyncio
+import gc
 import json
 import os
 import sys
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 from queue import Queue
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -113,6 +115,12 @@ class PosterResponse(BaseModel):
 
 # Store for active generation jobs and their progress
 jobs: dict = {}
+
+# Thread pool for running heavy generation tasks
+executor = ThreadPoolExecutor(max_workers=1)
+
+# Max distance for previews (to limit memory usage)
+MAX_PREVIEW_DISTANCE = 5000  # 5km max for previews
 
 
 @app.get("/")
@@ -317,7 +325,12 @@ def create_poster_internal(
     update_progress("Saving image", 6)
     plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
                 bbox_inches="tight", pad_inches=0.05)
-    plt.close()
+    plt.close(fig)
+    plt.close('all')  # Ensure all figures are closed
+    
+    # Clear references to help garbage collection
+    del g, g_proj, water, parks, edge_colors, edge_widths
+    gc.collect()
     
     return True
 
@@ -349,22 +362,33 @@ async def generate_preview(request: PreviewRequest):
         filename = f"preview_{city_slug}_{request.theme}_{preview_id}.png"
         output_path = previews_path / filename
         
-        # Use smaller dimensions for preview (1/3 size, 72 DPI instead of 300)
+        # Use smaller dimensions for preview (1/2 size, 100 DPI instead of 300)
         preview_width = request.width / 2
         preview_height = request.height / 2
         
-        create_poster_internal(
-            city=request.city,
-            country=request.country,
-            point=coords,
-            dist=request.distance,
-            output_file=str(output_path),
-            width=preview_width,
-            height=preview_height,
-            theme=theme,
-            fonts=fonts,
-            dpi=100,  # Low DPI for fast preview
+        # Limit distance for previews to reduce memory usage
+        preview_distance = min(request.distance, MAX_PREVIEW_DISTANCE)
+        
+        # Run generation in thread pool to not block event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            executor,
+            lambda: create_poster_internal(
+                city=request.city,
+                country=request.country,
+                point=coords,
+                dist=preview_distance,
+                output_file=str(output_path),
+                width=preview_width,
+                height=preview_height,
+                theme=theme,
+                fonts=fonts,
+                dpi=72,  # Low DPI for fast preview
+            )
         )
+        
+        # Force garbage collection after heavy operation
+        gc.collect()
         
         return {
             "success": True,
@@ -413,19 +437,30 @@ async def generate_final(request: PosterRequest):
                 "step": step_name
             }
         
-        create_poster_internal(
-            city=request.city,
-            country=request.country,
-            point=coords,
-            dist=request.distance,
-            output_file=str(output_path),
-            width=request.width,
-            height=request.height,
-            theme=theme,
-            fonts=fonts,
-            dpi=300,
-            progress_callback=progress_callback,
+        # Limit distance to 8km for high-res to stay within memory limits
+        final_distance = min(request.distance, 8000)
+        
+        # Run in thread pool
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            executor,
+            lambda: create_poster_internal(
+                city=request.city,
+                country=request.country,
+                point=coords,
+                dist=final_distance,
+                output_file=str(output_path),
+                width=request.width,
+                height=request.height,
+                theme=theme,
+                fonts=fonts,
+                dpi=200,  # Reduced from 300 to save memory
+                progress_callback=progress_callback,
+            )
         )
+        
+        # Force garbage collection
+        gc.collect()
         
         jobs[job_id] = {"status": "complete", "progress": 100, "step": "Done"}
         
