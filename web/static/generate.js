@@ -501,10 +501,10 @@ async function handleGenerate() {
     const selectedThemeCard = themeGallery.querySelector('.theme-card.selected');
     const currentTheme = selectedThemeCard ? selectedThemeCard.dataset.theme : selectedTheme;
     
-    // For initial generation, use minimal features (fast)
+    // For initial generation, include water and parks (looks good), paths optional
     const features = {
-        water: false,
-        parks: false,
+        water: true,
+        parks: true,
         paths: false
     };
     

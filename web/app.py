@@ -99,8 +99,8 @@ class MapFeatures(BaseModel):
     """Feature flags for map generation."""
     roads: bool = Field(default=True, description="Include driving roads (always on)")
     paths: bool = Field(default=False, description="Include walking paths & cycleways")
-    water: bool = Field(default=False, description="Include water features")
-    parks: bool = Field(default=False, description="Include parks & greenery")
+    water: bool = Field(default=True, description="Include water features")
+    parks: bool = Field(default=True, description="Include parks & greenery")
 
 
 class PosterRequest(BaseModel):
@@ -462,13 +462,14 @@ async def start_preview(request: PreviewRequest):
                     "percent": percent
                 })
             
-            # Get features from request or default to roads only for fast preview
+            # Get features from request (default: water and parks on, paths off)
             features_dict = {
                 'roads': True,
-                'paths': request.features.paths if hasattr(request, 'features') else False,
-                'water': request.features.water if hasattr(request, 'features') else False,
-                'parks': request.features.parks if hasattr(request, 'features') else False,
+                'paths': request.features.paths if request.features else False,
+                'water': request.features.water if request.features else True,
+                'parks': request.features.parks if request.features else True,
             }
+            print(f"  Features: {features_dict}")
             
             # Run in thread pool
             loop = asyncio.get_event_loop()
@@ -594,10 +595,11 @@ async def start_final_generation(request: PosterRequest):
             # Get features from request
             features_dict = {
                 'roads': True,
-                'paths': request.features.paths if hasattr(request, 'features') else False,
-                'water': request.features.water if hasattr(request, 'features') else False,
-                'parks': request.features.parks if hasattr(request, 'features') else False,
+                'paths': request.features.paths if request.features else False,
+                'water': request.features.water if request.features else True,
+                'parks': request.features.parks if request.features else True,
             }
+            print(f"  Features: {features_dict}")
             
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
