@@ -289,50 +289,58 @@ async function handleGenerate() {
     showLoading();
     generateBtn.classList.add('loading');
     generateBtn.disabled = true;
-    
-    // Simulate progress
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-        progress += Math.random() * 12;
-        if (progress > 92) progress = 92;
-        updateProgress(progress);
-    }, 400);
+    updateProgress(0, 6, 'Starting...');
     
     try {
-        const response = await fetch('/api/preview', {
+        // Start the job
+        const startResponse = await fetch('/api/preview/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings)
         });
         
-        const result = await response.json();
+        const startResult = await startResponse.json();
         
-        if (!response.ok) {
-            throw new Error(result.detail || 'Preview generation failed');
+        if (!startResponse.ok) {
+            throw new Error(startResult.detail || 'Failed to start preview');
         }
         
-        // Complete progress
-        clearInterval(progressInterval);
-        updateProgress(100);
-        await new Promise(r => setTimeout(r, 400));
+        const jobId = startResult.job_id;
         
-        // Add to previews
-        const preview = {
-            id: result.preview_id,
-            url: result.preview_url,
-            settings: settings,
-            timestamp: Date.now()
-        };
-        previews.push(preview);
-        currentPreviewIndex = previews.length - 1;
-        
-        // Show preview
-        hideLoading();
-        showPreview(preview);
-        goToStep2();
+        // Poll for progress
+        let complete = false;
+        while (!complete) {
+            await new Promise(r => setTimeout(r, 200));
+            
+            const progressResponse = await fetch(`/api/progress/${jobId}`);
+            const progress = await progressResponse.json();
+            
+            updateProgress(progress.step, progress.total, progress.message);
+            
+            if (progress.status === 'complete') {
+                complete = true;
+                
+                // Add to previews
+                const preview = {
+                    id: jobId,
+                    url: progress.preview_url,
+                    settings: settings,
+                    timestamp: Date.now()
+                };
+                previews.push(preview);
+                currentPreviewIndex = previews.length - 1;
+                
+                // Show preview
+                hideLoading();
+                showPreview(preview);
+                goToStep2();
+                
+            } else if (progress.status === 'error') {
+                throw new Error(progress.error || 'Preview generation failed');
+            }
+        }
         
     } catch (error) {
-        clearInterval(progressInterval);
         console.error('Preview error:', error);
         alert(`Error: ${error.message}`);
         hideLoading();
@@ -344,30 +352,22 @@ async function handleGenerate() {
 
 function showLoading() {
     loadingOverlay.classList.add('active');
-    updateProgress(0);
+    updateProgress(0, 6, 'Starting...');
 }
 
 function hideLoading() {
     loadingOverlay.classList.remove('active');
 }
 
-function updateProgress(percent) {
+function updateProgress(step, total, message) {
+    const percent = (step / total) * 100;
     const circumference = 2 * Math.PI * 45;
     const offset = circumference - (percent / 100) * circumference;
     
     progressRing.style.strokeDashoffset = offset;
-    progressPercent.textContent = `${Math.round(percent)}%`;
-    progressText.textContent = `${Math.round(percent)}%`;
-    
-    if (percent < 30) {
-        progressStatus.textContent = 'Fetching map data...';
-    } else if (percent < 60) {
-        progressStatus.textContent = 'Rendering streets...';
-    } else if (percent < 90) {
-        progressStatus.textContent = 'Applying theme...';
-    } else {
-        progressStatus.textContent = 'Finalizing...';
-    }
+    progressPercent.textContent = `${step}/${total}`;
+    progressText.textContent = `${step}/${total}`;
+    progressStatus.textContent = message || `Step ${step} of ${total}`;
 }
 
 // ============================================

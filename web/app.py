@@ -117,10 +117,20 @@ class PosterResponse(BaseModel):
 jobs: dict = {}
 
 # Thread pool for running heavy generation tasks
-executor = ThreadPoolExecutor(max_workers=1)
+executor = ThreadPoolExecutor(max_workers=2)
 
 # Max distance for previews (to limit memory usage)
-MAX_PREVIEW_DISTANCE = 5000  # 5km max for previews
+MAX_PREVIEW_DISTANCE = 3000  # 3km max for previews (faster initial load)
+
+# Progress steps for display
+PROGRESS_STEPS = {
+    1: "Finding location",
+    2: "Downloading streets",
+    3: "Downloading water",
+    4: "Downloading parks",
+    5: "Rendering map",
+    6: "Saving image"
+}
 
 
 @app.get("/")
@@ -133,6 +143,14 @@ async def root():
 async def health():
     """Health check endpoint for Railway."""
     return {"status": "healthy", "version": "MVP-1.0.0"}
+
+
+@app.get("/api/progress/{job_id}")
+async def get_progress(job_id: str):
+    """Get progress for a job (polling endpoint)."""
+    if job_id not in jobs:
+        return {"step": 0, "total": 6, "status": "not_found", "message": "Job not found"}
+    return jobs[job_id]
 
 
 @app.get("/generate")
@@ -335,74 +353,123 @@ def create_poster_internal(
     return True
 
 
-@app.post("/api/preview")
-async def generate_preview(request: PreviewRequest):
-    """Generate a fast low-resolution preview."""
+@app.post("/api/preview/start")
+async def start_preview(request: PreviewRequest):
+    """Start a preview generation and return job_id for progress tracking."""
     print(f"✓ Preview request: {request.city}, {request.country}")
     
-    try:
-        # Validate theme
-        available_themes = get_available_themes()
-        if request.theme not in available_themes:
-            raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
-        
-        # Get coordinates
+    # Validate theme
+    available_themes = get_available_themes()
+    if request.theme not in available_themes:
+        raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
+    
+    # Create job
+    job_id = uuid.uuid4().hex[:8]
+    city_slug = request.city.lower().replace(" ", "_").replace(",", "")
+    filename = f"preview_{city_slug}_{request.theme}_{job_id}.png"
+    
+    jobs[job_id] = {
+        "step": 0,
+        "total": 6,
+        "status": "starting",
+        "message": "Starting...",
+        "preview_url": None,
+        "error": None
+    }
+    
+    # Start generation in background
+    async def run_generation():
         try:
-            coords = get_coordinates(request.city, request.country)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        
-        # Load theme and fonts
-        theme = load_theme(request.theme)
-        fonts = load_fonts()
-        
-        # Generate preview with low DPI and smaller size
-        preview_id = uuid.uuid4().hex[:8]
-        city_slug = request.city.lower().replace(" ", "_").replace(",", "")
-        filename = f"preview_{city_slug}_{request.theme}_{preview_id}.png"
-        output_path = previews_path / filename
-        
-        # Use smaller dimensions for preview (1/2 size, 100 DPI instead of 300)
-        preview_width = request.width / 2
-        preview_height = request.height / 2
-        
-        # Limit distance for previews to reduce memory usage
-        preview_distance = min(request.distance, MAX_PREVIEW_DISTANCE)
-        
-        # Run generation in thread pool to not block event loop
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            executor,
-            lambda: create_poster_internal(
-                city=request.city,
-                country=request.country,
-                point=coords,
-                dist=preview_distance,
-                output_file=str(output_path),
-                width=preview_width,
-                height=preview_height,
-                theme=theme,
-                fonts=fonts,
-                dpi=72,  # Low DPI for fast preview
+            # Step 1: Get coordinates
+            jobs[job_id].update({"step": 1, "message": "Finding location", "status": "running"})
+            
+            try:
+                coords = get_coordinates(request.city, request.country)
+            except ValueError as e:
+                jobs[job_id].update({"status": "error", "error": str(e)})
+                return
+            
+            # Load theme and fonts
+            theme = load_theme(request.theme)
+            fonts = load_fonts()
+            
+            output_path = previews_path / filename
+            preview_width = request.width / 2
+            preview_height = request.height / 2
+            preview_distance = min(request.distance, MAX_PREVIEW_DISTANCE)
+            
+            # Progress callback
+            def progress_callback(step_name, step_num, total):
+                jobs[job_id].update({
+                    "step": step_num,
+                    "total": total,
+                    "message": step_name,
+                    "status": "running"
+                })
+            
+            # Run in thread pool
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                executor,
+                lambda: create_poster_internal(
+                    city=request.city,
+                    country=request.country,
+                    point=coords,
+                    dist=preview_distance,
+                    output_file=str(output_path),
+                    width=preview_width,
+                    height=preview_height,
+                    theme=theme,
+                    fonts=fonts,
+                    dpi=72,
+                    progress_callback=progress_callback,
+                )
             )
-        )
-        
-        # Force garbage collection after heavy operation
-        gc.collect()
-        
-        return {
-            "success": True,
-            "preview_url": f"/previews/{filename}",
-            "coords": list(coords),
-            "preview_id": preview_id,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")
+            
+            gc.collect()
+            
+            jobs[job_id].update({
+                "step": 6,
+                "status": "complete",
+                "message": "Done!",
+                "preview_url": f"/previews/{filename}",
+                "coords": list(coords)
+            })
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            jobs[job_id].update({"status": "error", "error": str(e)})
+    
+    # Fire and forget
+    asyncio.create_task(run_generation())
+    
+    return {"job_id": job_id, "status": "started"}
+
+
+@app.post("/api/preview")
+async def generate_preview_sync(request: PreviewRequest):
+    """Synchronous preview (backwards compatible) - starts job and waits for completion."""
+    # Start the job
+    result = await start_preview(request)
+    job_id = result["job_id"]
+    
+    # Poll until complete
+    while True:
+        job = jobs.get(job_id, {})
+        if job.get("status") in ["complete", "error"]:
+            break
+        await asyncio.sleep(0.1)
+    
+    if job.get("status") == "error":
+        raise HTTPException(status_code=500, detail=job.get("error", "Preview failed"))
+    
+    return {
+        "success": True,
+        "preview_url": job["preview_url"],
+        "coords": job.get("coords", []),
+        "preview_id": job_id,
+    }
 
 
 @app.post("/api/generate")
