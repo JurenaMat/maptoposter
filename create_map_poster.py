@@ -406,29 +406,30 @@ def get_crop_limits(g_proj, center_lat_lon, fig, dist):
     )
 
 
-def fetch_graph(point, dist) -> MultiDiGraph | None:
+def fetch_graph(point, dist, network_type='drive') -> MultiDiGraph | None:
     """
     Fetch street network graph from OpenStreetMap.
 
-    Uses caching to avoid redundant downloads. Fetches all network types
+    Uses caching to avoid redundant downloads. Fetches specified network types
     within the specified distance from the center point.
 
     Args:
         point: (latitude, longitude) tuple for center point
         dist: Distance in meters from center point
+        network_type: OSMnx network type ('drive', 'all', 'walk', 'bike')
 
     Returns:
         MultiDiGraph of street network, or None if fetch fails
     """
     lat, lon = point
-    graph = f"graph_{lat}_{lon}_{dist}"
+    graph = f"graph_{lat}_{lon}_{dist}_{network_type}"
     cached = cache_get(graph)
     if cached is not None:
-        print("✓ Using cached street network")
+        print(f"✓ Using cached street network ({network_type})")
         return cast(MultiDiGraph, cached)
 
     try:
-        g = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all', truncate_by_edge=True)
+        g = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type=network_type, truncate_by_edge=True)
         # Rate limit between requests
         time.sleep(0.5)
         try:

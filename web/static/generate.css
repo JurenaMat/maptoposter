@@ -613,6 +613,101 @@
     margin-top: 0.75rem;
 }
 
+/* Customize Panel */
+.customize-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.customize-panel h3 {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.customize-hint {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.feature-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.feature-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    padding: 0.75rem;
+    border-radius: 8px;
+    transition: background 0.15s ease;
+}
+
+.feature-toggle:hover {
+    background: var(--bg-tertiary);
+}
+
+.feature-toggle input {
+    display: none;
+}
+
+.feature-toggle-box {
+    width: 22px;
+    height: 22px;
+    border: 2px solid var(--border-strong);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.feature-toggle-box svg {
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.15s ease;
+    color: white;
+}
+
+.feature-toggle input:checked + .feature-toggle-box {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.feature-toggle input:checked + .feature-toggle-box svg {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.feature-toggle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.feature-name {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.feature-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.customize-panel .btn {
+    margin-top: 1rem;
+}
+
 .preview-divider {
     display: flex;
     align-items: center;

@@ -95,6 +95,14 @@ previews_path.mkdir(exist_ok=True)
 app.mount("/previews", StaticFiles(directory=str(previews_path)), name="previews")
 
 
+class MapFeatures(BaseModel):
+    """Feature flags for map generation."""
+    roads: bool = Field(default=True, description="Include driving roads (always on)")
+    paths: bool = Field(default=False, description="Include walking paths & cycleways")
+    water: bool = Field(default=False, description="Include water features")
+    parks: bool = Field(default=False, description="Include parks & greenery")
+
+
 class PosterRequest(BaseModel):
     """Request model for poster generation."""
     city: str = Field(..., min_length=1, description="City name")
@@ -103,6 +111,7 @@ class PosterRequest(BaseModel):
     distance: int = Field(default=3000, ge=1000, le=20000, description="Map radius in meters")
     width: float = Field(default=12, ge=3, le=32, description="Poster width in inches")
     height: float = Field(default=16, ge=3, le=32, description="Poster height in inches")
+    features: MapFeatures = Field(default_factory=MapFeatures, description="Map features to include")
 
 
 class PreviewRequest(PosterRequest):
@@ -220,67 +229,73 @@ async def get_examples():
 def create_poster_internal(
     city, country, point, dist, output_file, 
     width=12, height=16, theme=None, fonts=None, dpi=300, progress_callback=None,
-    skip_features=False
+    features=None
 ):
     """
     Internal poster generation with progress callbacks.
     
     Args:
         progress_callback: Function to call with (step_name, step_number, total_steps)
-        skip_features: If True, skip water/parks for faster preview generation
+        features: Dict with keys 'roads', 'paths', 'water', 'parks' (all bool)
     """
     THEME = theme or load_theme("noir")
     create_map_poster.THEME = THEME
     
-    total_steps = 4 if skip_features else 6
+    # Default features: just roads
+    if features is None:
+        features = {'roads': True, 'paths': False, 'water': False, 'parks': False}
     
-    # Start percentages for each step (based on typical timing)
-    # Streets (step 2) takes ~45% of total time
-    if skip_features:
-        # Without water/parks: location 0-10, streets 10-85, render 85-95, save 95-100
-        step_percentages = {1: 2, 2: 10, 3: 88, 4: 96}
-    else:
-        # Full: location 0-8, streets 8-52, water 52-72, parks 72-88, render 88-96, save 96-100
-        step_percentages = {1: 2, 2: 8, 3: 52, 4: 72, 5: 88, 6: 96}
+    # Calculate total steps based on enabled features
+    total_steps = 2  # Always: location + roads
+    if features.get('water'):
+        total_steps += 1
+    if features.get('parks'):
+        total_steps += 1
+    total_steps += 2  # render + save
     
-    def update_progress(step_name, step_num):
+    current_step = 0
+    
+    def update_progress(step_name):
+        nonlocal current_step
+        current_step += 1
+        percent = int((current_step / total_steps) * 100)
         if progress_callback:
-            progress_callback(step_name, step_num, total_steps, step_percentages.get(step_num, 0))
-        print(f"  [{step_num}/{total_steps}] {step_name}")
+            progress_callback(step_name, current_step, total_steps, percent)
+        print(f"  [{current_step}/{total_steps}] {step_name}")
     
-    update_progress("Searching for your location", 1)
+    update_progress("Searching for your location")
     
     # Calculate compensated distance for viewport
     compensated_dist = dist * (max(height, width) / min(height, width)) / 4
     
-    update_progress("Loading all the streets", 2)
-    g = fetch_graph(point, compensated_dist)
+    # Determine network type based on features
+    network_type = 'all' if features.get('paths') else 'drive'
+    update_progress("Loading streets" + (" & paths" if features.get('paths') else ""))
+    
+    g = fetch_graph(point, compensated_dist, network_type=network_type)
     if g is None:
         raise RuntimeError("Failed to retrieve street network data.")
     
     water = None
     parks = None
     
-    if skip_features:
-        # Fast path: skip water and parks for preview
-        update_progress("Putting it all together", 3)
-    else:
-        # Full path: include water and parks
-        update_progress("Adding water elements", 3)
+    if features.get('water'):
+        update_progress("Adding water elements")
         water = fetch_features(
             point, compensated_dist,
             tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
             name="water"
         )
-        
-        update_progress("Adding parks and greenery", 4)
+    
+    if features.get('parks'):
+        update_progress("Adding parks and greenery")
         parks = fetch_features(
             point, compensated_dist,
             tags={"leisure": "park", "landuse": "grass"},
             name="parks"
         )
-        
-        update_progress("Putting it all together", 5)
+    
+    update_progress("Putting it all together")
     
     # Setup plot
     fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
@@ -378,8 +393,7 @@ def create_poster_internal(
     ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
             linewidth=1 * scale_factor, zorder=11)
     
-    save_step = 4 if skip_features else 6
-    update_progress("Finishing up", save_step)
+    update_progress("Finishing up")
     plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
                 bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
@@ -448,6 +462,14 @@ async def start_preview(request: PreviewRequest):
                     "percent": percent
                 })
             
+            # Get features from request or default to roads only for fast preview
+            features_dict = {
+                'roads': True,
+                'paths': request.features.paths if hasattr(request, 'features') else False,
+                'water': request.features.water if hasattr(request, 'features') else False,
+                'parks': request.features.parks if hasattr(request, 'features') else False,
+            }
+            
             # Run in thread pool
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -464,19 +486,20 @@ async def start_preview(request: PreviewRequest):
                     fonts=fonts,
                     dpi=72,
                     progress_callback=progress_callback,
-                    skip_features=False,  # Include water/parks for better visuals
+                    features=features_dict,
                 )
             )
             
             gc.collect()
             
             jobs[job_id].update({
-                "step": 6,
+                "step": jobs[job_id].get("total", 6),
                 "status": "complete",
                 "message": "Done!",
                 "percent": 100,
                 "preview_url": f"/previews/{filename}",
-                "coords": list(coords)
+                "coords": list(coords),
+                "features": features_dict  # Store features for high-res
             })
             
         except Exception as e:
@@ -568,6 +591,14 @@ async def start_final_generation(request: PosterRequest):
             # Use same distance as preview - no artificial limit
             final_distance = request.distance
             
+            # Get features from request
+            features_dict = {
+                'roads': True,
+                'paths': request.features.paths if hasattr(request, 'features') else False,
+                'water': request.features.water if hasattr(request, 'features') else False,
+                'parks': request.features.parks if hasattr(request, 'features') else False,
+            }
+            
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 executor,
@@ -583,13 +614,14 @@ async def start_final_generation(request: PosterRequest):
                     fonts=fonts,
                     dpi=150,  # Balanced: good for print, faster generation
                     progress_callback=progress_callback,
+                    features=features_dict,
                 )
             )
             
             gc.collect()
             
             jobs[job_id].update({
-                "step": 6,
+                "step": jobs[job_id].get("total", 6),
                 "status": "complete",
                 "message": "Done!",
                 "percent": 100,

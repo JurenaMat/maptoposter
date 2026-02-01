@@ -24,6 +24,13 @@ let previews = []; // Store generated previews
 let currentPreviewIndex = 0;
 const MAX_PREVIEWS = 3;
 
+// Feature toggles - default to off for fast initial preview
+let selectedFeatures = {
+    water: false,
+    parks: false,
+    paths: false
+};
+
 // DOM Elements
 const cityInput = document.getElementById('cityInput');
 const autocompleteDropdown = document.getElementById('autocompleteDropdown');
@@ -284,6 +291,15 @@ function setupEventListeners() {
     generateFinalBtn.addEventListener('click', handleGenerateFinal);
     editConfigBtn.addEventListener('click', goToStep1);
     
+    // Feature toggles
+    setupFeatureToggles();
+    
+    // Regenerate button
+    const regenerateBtn = document.getElementById('regenerateBtn');
+    if (regenerateBtn) {
+        regenerateBtn.addEventListener('click', handleRegenerate);
+    }
+    
     // Result modal
     resultModalClose.addEventListener('click', closeResultModal);
     document.querySelector('#resultModal .modal-backdrop')?.addEventListener('click', closeResultModal);
@@ -307,6 +323,52 @@ function setupEventListeners() {
     if (zoomModal) {
         zoomModal.querySelector('.modal-backdrop')?.addEventListener('click', closeZoomModal);
     }
+}
+
+function setupFeatureToggles() {
+    const featureWater = document.getElementById('featureWater');
+    const featureParks = document.getElementById('featureParks');
+    const featurePaths = document.getElementById('featurePaths');
+    const regenerateBtn = document.getElementById('regenerateBtn');
+    
+    const checkFeaturesChanged = () => {
+        const preview = previews[currentPreviewIndex];
+        if (!preview) return;
+        
+        const previewFeatures = preview.settings.features || { water: false, parks: false, paths: false };
+        const changed = 
+            featureWater.checked !== previewFeatures.water ||
+            featureParks.checked !== previewFeatures.parks ||
+            featurePaths.checked !== previewFeatures.paths;
+        
+        if (regenerateBtn) {
+            regenerateBtn.style.display = changed ? 'flex' : 'none';
+        }
+    };
+    
+    if (featureWater) featureWater.addEventListener('change', checkFeaturesChanged);
+    if (featureParks) featureParks.addEventListener('change', checkFeaturesChanged);
+    if (featurePaths) featurePaths.addEventListener('change', checkFeaturesChanged);
+}
+
+function getSelectedFeatures() {
+    return {
+        water: document.getElementById('featureWater')?.checked || false,
+        parks: document.getElementById('featureParks')?.checked || false,
+        paths: document.getElementById('featurePaths')?.checked || false
+    };
+}
+
+function setFeatureCheckboxes(features) {
+    const featureWater = document.getElementById('featureWater');
+    const featureParks = document.getElementById('featureParks');
+    const featurePaths = document.getElementById('featurePaths');
+    const regenerateBtn = document.getElementById('regenerateBtn');
+    
+    if (featureWater) featureWater.checked = features?.water || false;
+    if (featureParks) featureParks.checked = features?.parks || false;
+    if (featurePaths) featurePaths.checked = features?.paths || false;
+    if (regenerateBtn) regenerateBtn.style.display = 'none';
 }
 
 // ============================================
@@ -439,13 +501,21 @@ async function handleGenerate() {
     const selectedThemeCard = themeGallery.querySelector('.theme-card.selected');
     const currentTheme = selectedThemeCard ? selectedThemeCard.dataset.theme : selectedTheme;
     
+    // For initial generation, use minimal features (fast)
+    const features = {
+        water: false,
+        parks: false,
+        paths: false
+    };
+    
     const settings = {
         city: selectedCity,
         country: selectedCountry,
         theme: currentTheme,
         distance: currentDistance,
         width: width,
-        height: height
+        height: height,
+        features: features
     };
     
     console.log('Generating with settings:', settings);
@@ -637,7 +707,86 @@ function showPreview(preview) {
     previewCity.textContent = `${settings.city}, ${settings.country}`;
     previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
     
+    // Update feature checkboxes to match this preview
+    setFeatureCheckboxes(settings.features);
+    
     renderMiniPreviews();
+}
+
+// Handle regeneration with new features
+async function handleRegenerate() {
+    const preview = previews[currentPreviewIndex];
+    if (!preview) return;
+    
+    const features = getSelectedFeatures();
+    const settings = {
+        ...preview.settings,
+        features: features
+    };
+    
+    console.log('Regenerating with features:', features);
+    
+    // Show loading
+    showLoading();
+    generateBtn.classList.add('loading');
+    generateBtn.disabled = true;
+    updateProgress(0, 6, 'Updating preview...');
+    
+    try {
+        // Start the job
+        const startResponse = await fetch('/api/preview/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        
+        const startResult = await startResponse.json();
+        
+        if (!startResponse.ok) {
+            throw new Error(startResult.detail || 'Failed to start preview');
+        }
+        
+        const jobId = startResult.job_id;
+        
+        // Poll for progress
+        let complete = false;
+        while (!complete) {
+            await new Promise(r => setTimeout(r, 200));
+            
+            const progressResponse = await fetch(`/api/progress/${jobId}`);
+            const progress = await progressResponse.json();
+            
+            updateProgress(progress.step, progress.total, progress.message, progress.percent);
+            
+            if (progress.status === 'complete') {
+                complete = true;
+                
+                // Update current preview in place
+                previews[currentPreviewIndex] = {
+                    id: jobId,
+                    url: progress.preview_url,
+                    settings: settings,
+                    timestamp: Date.now()
+                };
+                
+                // Show updated preview
+                hideLoading();
+                showPreview(previews[currentPreviewIndex]);
+                showToast('Preview updated!', 'success');
+                
+            } else if (progress.status === 'error') {
+                throw new Error(progress.error || 'Preview generation failed');
+            }
+        }
+        
+    } catch (error) {
+        console.error('Regenerate error:', error);
+        showToast(error.message || 'An unexpected error occurred');
+        hideLoading();
+    } finally {
+        generateBtn.classList.remove('loading');
+        generateBtn.disabled = false;
+    }
 }
 
 function renderMiniPreviews() {
@@ -694,12 +843,15 @@ async function handleGenerateFinal() {
     const preview = previews[currentPreviewIndex];
     if (!preview) return;
     
+    // Use the exact settings from the preview (including features)
     const settings = preview.settings;
+    
+    console.log('Generating final with features:', settings.features);
     
     showFinalProgress(settings, preview.url);
     
     try {
-        // Start the async job
+        // Start the async job - settings includes features from preview
         const startResponse = await fetch('/api/generate/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

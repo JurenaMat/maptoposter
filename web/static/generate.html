@@ -240,14 +240,65 @@
                         <p id="previewMeta">Theme • 10km • 12×16"</p>
                     </div>
 
+                    <!-- Customize Features -->
+                    <div class="customize-panel">
+                        <h3>Customize Map</h3>
+                        <p class="customize-hint">Add extra details to your map</p>
+                        <div class="feature-toggles">
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="featureWater">
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Water</span>
+                                    <span class="feature-desc">Rivers, lakes, sea</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="featureParks">
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Parks & Greenery</span>
+                                    <span class="feature-desc">Parks, grass areas</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="featurePaths">
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Paths & Cycleways</span>
+                                    <span class="feature-desc">Walking paths, bike lanes</span>
+                                </span>
+                            </label>
+                        </div>
+                        <button class="btn btn-secondary btn-full" id="regenerateBtn" style="display: none;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 4v6h-6M1 20v-6h6"/>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                            </svg>
+                            Update Preview
+                        </button>
+                    </div>
+
                     <div class="preview-actions-main">
                         <button class="btn btn-primary btn-large btn-full" id="generateFinalBtn">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
                             </svg>
-                            Download in High Resolution
+                            Download High Resolution
                         </button>
-                        <p class="action-hint">300 DPI print-ready quality</p>
+                        <p class="action-hint">Print-ready quality</p>
                     </div>
 
                     <div class="preview-divider">
@@ -255,15 +306,15 @@
                     </div>
 
                     <div class="preview-actions-alt">
-                        <h3>Not quite right?</h3>
-                        <p>Try a different theme, radius, or size. You can generate up to <strong>3 previews</strong> to compare.</p>
+                        <h3>Change Location or Theme?</h3>
+                        <p>You can generate up to <strong>3 previews</strong> to compare.</p>
                         
                         <button class="btn btn-secondary btn-full" id="editConfigBtn">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
-                            Edit & Regenerate
+                            Edit Settings
                         </button>
                     </div>
 
