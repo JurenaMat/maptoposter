@@ -706,7 +706,14 @@ async function handleGenerateFinal() {
             body: JSON.stringify(settings)
         });
         
-        const startResult = await startResponse.json();
+        const responseText = await startResponse.text();
+        let startResult;
+        try {
+            startResult = JSON.parse(responseText);
+        } catch (e) {
+            // Response wasn't JSON - likely an internal server error
+            throw new Error(`Server error: ${responseText.substring(0, 100)}`);
+        }
         
         if (!startResponse.ok) {
             throw new Error(startResult.detail || 'Failed to start generation');
