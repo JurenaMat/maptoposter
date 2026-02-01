@@ -26,7 +26,7 @@ from queue import Queue
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
-from image_utils import generate_preview_from_png, r2_storage
+from web.image_utils import generate_preview_from_png, r2_storage
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
