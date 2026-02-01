@@ -1,9 +1,13 @@
 /**
  * MapToPoster Homepage
- * Simple gallery and navigation to /generate
+ * Hero carousel, gallery, and navigation
  */
 
 const gallery = document.getElementById('gallery');
+const heroCarousel = document.getElementById('heroCarousel');
+
+let carouselImages = [];
+let currentCarouselIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadExamples();
@@ -14,9 +18,14 @@ async function loadExamples() {
         const response = await fetch('/api/examples');
         const examples = await response.json();
         
+        // Setup hero carousel with poster images
+        setupHeroCarousel(examples);
+        
+        // Render gallery with lazy loading
         gallery.innerHTML = examples.map(example => `
             <div class="gallery-item" data-city="${example.city}" data-country="${example.country}" data-theme="${example.theme}">
-                <img src="${example.image}" alt="${example.city} map poster" loading="lazy">
+                <div class="gallery-item-placeholder"></div>
+                <img src="${example.image}" alt="${example.city} map poster" loading="lazy" onload="this.parentElement.classList.add('loaded')">
                 <div class="gallery-item-overlay">
                     <div class="gallery-item-city">${example.city}</div>
                     <div class="gallery-item-theme">${example.description}</div>
@@ -37,4 +46,31 @@ async function loadExamples() {
     } catch (error) {
         console.error('Failed to load examples:', error);
     }
+}
+
+function setupHeroCarousel(examples) {
+    if (!heroCarousel || examples.length === 0) return;
+    
+    carouselImages = examples.map(e => e.image);
+    
+    // Create carousel slides
+    heroCarousel.innerHTML = carouselImages.map((img, index) => `
+        <div class="hero-carousel-image ${index === 0 ? 'active' : ''}">
+            <img src="${img}" alt="Map poster">
+        </div>
+    `).join('');
+    
+    // Start rotation
+    if (carouselImages.length > 1) {
+        setInterval(rotateCarousel, 5000);
+    }
+}
+
+function rotateCarousel() {
+    const slides = heroCarousel.querySelectorAll('.hero-carousel-image');
+    if (slides.length === 0) return;
+    
+    slides[currentCarouselIndex].classList.remove('active');
+    currentCarouselIndex = (currentCarouselIndex + 1) % slides.length;
+    slides[currentCarouselIndex].classList.add('active');
 }

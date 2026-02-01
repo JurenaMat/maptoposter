@@ -119,14 +119,50 @@ body {
     text-align: center;
     padding: var(--section-padding) clamp(1.5rem, 5vw, 3rem);
     position: relative;
+    overflow: hidden;
+}
+
+/* Rotating background carousel */
+.hero-carousel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    z-index: 0;
+}
+
+.hero-carousel-image {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;
+}
+
+.hero-carousel-image.active {
+    opacity: 1;
+}
+
+.hero-carousel-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.3) saturate(0.8);
+    transform: scale(1.1);
+}
+
+.hero-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
     background: 
-        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 197, 71, 0.08), transparent),
-        var(--bg-primary);
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 197, 71, 0.12), transparent),
+        linear-gradient(to bottom, rgba(10, 10, 10, 0.4), rgba(10, 10, 10, 0.8));
 }
 
 .hero-content {
     max-width: 720px;
     animation: fadeInUp 0.8s ease-out;
+    position: relative;
+    z-index: 2;
 }
 
 .hero-title {
@@ -165,6 +201,7 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.1em;
     animation: bounce 2s infinite;
+    z-index: 2;
 }
 
 @keyframes fadeInUp {
@@ -327,11 +364,33 @@ body {
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
+.gallery-item-placeholder {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        135deg,
+        var(--bg-tertiary) 0%,
+        var(--bg-card) 50%,
+        var(--bg-tertiary) 100%
+    );
+    background-size: 200% 200%;
+    animation: shimmer 2s infinite;
+}
+
+.gallery-item.loaded .gallery-item-placeholder {
+    opacity: 0;
+}
+
 .gallery-item img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     transition: var(--transition-slow);
+    opacity: 0;
+}
+
+.gallery-item.loaded img {
+    opacity: 1;
 }
 
 .gallery-item:hover img {

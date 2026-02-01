@@ -89,20 +89,48 @@
                     <div class="options-grid">
                         <div class="form-group">
                             <label>Map Radius</label>
-                            <select id="distanceSelect">
-                                <option value="2000">2 km — Walkable Area</option>
-                                <option value="3000" selected>3 km — Neighborhood</option>
-                                <option value="5000">5 km — Downtown</option>
-                            </select>
+                            <div class="radius-gallery" id="radiusGallery">
+                                <div class="radius-option" data-value="2000">
+                                    <div class="radius-preview">
+                                        <svg viewBox="0 0 60 60">
+                                            <circle cx="30" cy="30" r="8" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <span class="radius-label">2 km</span>
+                                    <span class="radius-desc">Walkable</span>
+                                </div>
+                                <div class="radius-option selected" data-value="3000">
+                                    <div class="radius-preview">
+                                        <svg viewBox="0 0 60 60">
+                                            <circle cx="30" cy="30" r="12" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <span class="radius-label">3 km</span>
+                                    <span class="radius-desc">Neighborhood</span>
+                                </div>
+                                <div class="radius-option" data-value="5000">
+                                    <div class="radius-preview">
+                                        <svg viewBox="0 0 60 60">
+                                            <circle cx="30" cy="30" r="20" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"/>
+                                            <circle cx="30" cy="30" r="2" fill="currentColor"/>
+                                        </svg>
+                                    </div>
+                                    <span class="radius-label">5 km</span>
+                                    <span class="radius-desc">Downtown</span>
+                                </div>
+                            </div>
+                            <input type="hidden" id="distanceSelect" value="3000">
                         </div>
                         <div class="form-group">
                             <label>Poster Size</label>
                             <select id="sizeSelect">
-                                <option value="12x16" selected>12×16" — Standard</option>
-                                <option value="11x14">11×14" — Medium</option>
-                                <option value="18x24">18×24" — Large</option>
-                                <option value="8x10">8×10" — Small</option>
-                                <option value="12x12">12×12" — Square</option>
+                                <option value="21x30" selected>21×30 cm — A4</option>
+                                <option value="30x40">30×40 cm — Standard</option>
+                                <option value="40x50">40×50 cm — Medium</option>
+                                <option value="50x70">50×70 cm — Large</option>
+                                <option value="30x30">30×30 cm — Square</option>
                             </select>
                         </div>
                     </div>

@@ -253,11 +253,22 @@
 .theme-info {
     padding: 0.625rem 0.75rem;
     background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
 }
 
 .theme-name {
     font-size: 0.8125rem;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.theme-desc {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -285,16 +296,78 @@
     display: flex;
 }
 
+/* Radius Gallery */
+.radius-gallery {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.radius-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0.5rem;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.radius-option:hover {
+    border-color: var(--border-hover);
+    background: var(--bg-card);
+}
+
+.radius-option.selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.radius-preview {
+    width: 48px;
+    height: 48px;
+    color: var(--text-muted);
+}
+
+.radius-option.selected .radius-preview {
+    color: var(--accent);
+}
+
+.radius-label {
+    font-size: 0.9375rem;
+    font-weight: 500;
+}
+
+.radius-option.selected .radius-label {
+    color: var(--accent);
+}
+
+.radius-desc {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+
 /* Options Grid */
 .options-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    gap: 1.5rem;
 }
 
-@media (max-width: 500px) {
+@media (max-width: 600px) {
     .options-grid {
         grid-template-columns: 1fr;
+    }
+    
+    .radius-gallery {
+        flex-wrap: wrap;
+    }
+    
+    .radius-option {
+        min-width: calc(33% - 0.5rem);
     }
 }
 

@@ -65,6 +65,7 @@ const createAnother = document.getElementById('createAnother');
 document.addEventListener('DOMContentLoaded', () => {
     loadThemes();
     setupEventListeners();
+    setupRadiusGallery();
     
     // Check URL params
     const params = new URLSearchParams(window.location.search);
@@ -105,6 +106,7 @@ function renderThemeGallery() {
             </div>
             <div class="theme-info">
                 <span class="theme-name">${theme.display_name}</span>
+                <span class="theme-desc">${theme.description || ''}</span>
             </div>
             <div class="theme-check">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
@@ -122,6 +124,27 @@ function renderThemeGallery() {
             selectedTheme = card.dataset.theme;
         });
     });
+}
+
+// Setup radius gallery click handlers
+function setupRadiusGallery() {
+    const radiusGallery = document.getElementById('radiusGallery');
+    const distanceInput = document.getElementById('distanceSelect');
+    
+    if (!radiusGallery) return;
+    
+    radiusGallery.querySelectorAll('.radius-option').forEach(option => {
+        option.addEventListener('click', () => {
+            radiusGallery.querySelectorAll('.radius-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            distanceInput.value = option.dataset.value;
+        });
+    });
+}
+
+// Convert cm to inches for backend
+function cmToInches(cm) {
+    return cm / 2.54;
 }
 
 function setupEventListeners() {
@@ -272,9 +295,11 @@ async function handleGenerate() {
         return;
     }
     
-    // Get settings
+    // Get settings - convert cm to inches for backend
     const sizeValue = sizeSelect.value;
-    const [width, height] = sizeValue.split('x').map(Number);
+    const [widthCm, heightCm] = sizeValue.split('x').map(Number);
+    const width = cmToInches(widthCm);
+    const height = cmToInches(heightCm);
     
     const settings = {
         city: selectedCity,
