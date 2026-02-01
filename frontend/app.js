@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadExamples() {
     try {
-        const response = await fetch('/api/examples');
+        const response = await fetch((window.API_BASE || '') + '/api/examples');
         const examples = await response.json();
         
         // Setup hero carousel with poster images

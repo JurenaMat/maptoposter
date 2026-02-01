@@ -26,6 +26,8 @@ from queue import Queue
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
+from image_utils import generate_preview_from_png, r2_storage
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -178,19 +180,32 @@ async def get_themes():
 @app.get("/api/examples")
 async def get_examples():
     """Get example posters to showcase on homepage."""
+    # Use optimized WebP previews instead of full PNGs
     examples = [
         {"city": "San Francisco", "country": "USA", "theme": "sunset",
-         "image": "/posters/san_francisco_sunset_20260118_144726.png", "description": "Warm sunset tones"},
+         "image": "/static/examples/san_francisco_sunset_thumb.webp",
+         "preview": "/static/examples/san_francisco_sunset_preview.webp",
+         "description": "Warm sunset tones"},
         {"city": "Tokyo", "country": "Japan", "theme": "japanese_ink",
-         "image": "/posters/tokyo_japanese_ink_20260118_142446.png", "description": "Minimalist ink wash"},
+         "image": "/static/examples/tokyo_japanese_ink_thumb.webp",
+         "preview": "/static/examples/tokyo_japanese_ink_preview.webp",
+         "description": "Minimalist ink wash"},
         {"city": "Venice", "country": "Italy", "theme": "blueprint",
-         "image": "/posters/venice_blueprint_20260118_140505.png", "description": "Architectural blueprint"},
+         "image": "/static/examples/venice_blueprint_thumb.webp",
+         "preview": "/static/examples/venice_blueprint_preview.webp",
+         "description": "Architectural blueprint"},
         {"city": "Dubai", "country": "UAE", "theme": "midnight_blue",
-         "image": "/posters/dubai_midnight_blue_20260118_140807.png", "description": "Navy & gold luxury"},
+         "image": "/static/examples/dubai_midnight_blue_thumb.webp",
+         "preview": "/static/examples/dubai_midnight_blue_preview.webp",
+         "description": "Navy & gold luxury"},
         {"city": "Singapore", "country": "Singapore", "theme": "neon_cyberpunk",
-         "image": "/posters/singapore_neon_cyberpunk_20260118_153328.png", "description": "Electric cyberpunk"},
+         "image": "/static/examples/singapore_neon_cyberpunk_thumb.webp",
+         "preview": "/static/examples/singapore_neon_cyberpunk_preview.webp",
+         "description": "Electric cyberpunk"},
         {"city": "Prague", "country": "Czech Republic", "theme": "noir",
-         "image": "/posters/prague_noir_20260201_123817.png", "description": "Pure gallery noir"},
+         "image": "/static/examples/prague_noir_thumb.webp",
+         "preview": "/static/examples/prague_noir_preview.webp",
+         "description": "Pure gallery noir"},
     ]
     return examples
 

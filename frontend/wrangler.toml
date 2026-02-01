@@ -1,0 +1,10 @@
+# Cloudflare Pages configuration
+name = "maptoposter"
+compatibility_date = "2024-01-01"
+
+# No build step needed - pure static files
+[build]
+command = ""
+
+# Environment variables (set in Cloudflare dashboard)
+# API_URL = "https://your-cloud-run-url.run.app"

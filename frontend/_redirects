@@ -1,0 +1,6 @@
+# Cloudflare Pages redirects
+# Proxy API calls to Cloud Run backend (set API_URL in env)
+/api/*  https://API_URL_PLACEHOLDER/api/:splat  200
+
+# SPA fallback
+/*  /index.html  200
