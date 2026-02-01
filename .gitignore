@@ -1,5 +1,14 @@
 cache/*
 
+# Generated files (keep examples, ignore user-generated)
+web/previews/*.png
+posters/*.png
+!posters/san_francisco_sunset_20260117_224834.png
+!posters/mumbai_contrast_zones_20260118_145843.png
+!posters/new_york_noir_20260118_135113.png
+!posters/paris_pastel_dream_20260118_141126.png
+!posters/prague_noir_20260201_123817.png
+
 # Virtual environments
 env/
 .env/
