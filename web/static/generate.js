@@ -1,13 +1,11 @@
 /**
  * MapToPoster Generate Page
- * MVP v1.1 - 2026-02-02
+ * MVP v1.6 - 2026-02-02
  * 
- * Features:
- * - Layer-based compositing for instant feature toggling
- * - Visual theme gallery
- * - City autocomplete
- * - Progress ring animation
- * - High-res generation with step progress
+ * INSTANT VARIANT SWITCHING
+ * - Water & Parks toggle
+ * - Simple vs All Streets radio
+ * - Variants render in background, switch instantly
  */
 
 // State
@@ -18,38 +16,40 @@ let selectedDistance = 5000;
 let selectedSize = '50x70';
 let debounceTimer = null;
 let themes = [];
-let currentPreview = null; // Current preview with layers
-let pathsPollingInterval = null;
+
+// Preview state
+let currentPreview = null;
+let previews = [];
+let currentPreviewIndex = 0;
+let currentJobId = null;
+let variantPollingInterval = null;
+
+// Variant state - tracks available variants
+let variants = {
+    drive_with_wp: null,
+    drive_no_wp: null,
+    all_with_wp: null,
+    all_no_wp: null
+};
 
 // DOM Elements
 const cityInput = document.getElementById('cityInput');
 const autocompleteDropdown = document.getElementById('autocompleteDropdown');
 const themeGallery = document.getElementById('themeGallery');
 const generateBtn = document.getElementById('generateBtn');
-const progressText = document.getElementById('progressText');
-
 const step1 = document.getElementById('step1');
 const step2 = document.getElementById('step2');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const progressRing = document.getElementById('progressRing');
 const progressPercent = document.getElementById('progressPercent');
 const progressStatus = document.getElementById('progressStatus');
-
-const layerBase = document.getElementById('layerBase');
-const layerWater = document.getElementById('layerWater');
-const layerParks = document.getElementById('layerParks');
-const layerPaths = document.getElementById('layerPaths');
-const pathsLoading = document.getElementById('pathsLoading');
-
 const previewCity = document.getElementById('previewCity');
 const previewMeta = document.getElementById('previewMeta');
 const generateFinalBtn = document.getElementById('generateFinalBtn');
 const editConfigBtn = document.getElementById('editConfigBtn');
-
 const progressModal = document.getElementById('progressModal');
 const finalProgressCity = document.getElementById('finalProgressCity');
 const finalProgressBar = document.getElementById('finalProgressBar');
-
 const resultModal = document.getElementById('resultModal');
 const resultModalClose = document.getElementById('resultModalClose');
 const resultImage = document.getElementById('resultImage');
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     setupRadiusGallery();
     setupSizeGallery();
-    setupFeatureToggles();
+    setupVariantToggles();
     
     const params = new URLSearchParams(window.location.search);
     if (params.get('city') && params.get('country')) {
@@ -169,39 +169,65 @@ function renderThemeGallery() {
 }
 
 // ============================================
-// Feature Toggles - INSTANT layer visibility
+// Variant Toggles - Water&Parks + StreetType
 // ============================================
 
-function setupFeatureToggles() {
-    const featureWater = document.getElementById('featureWater');
-    const featureParks = document.getElementById('featureParks');
-    const featurePaths = document.getElementById('featurePaths');
+function setupVariantToggles() {
+    const waterParksToggle = document.getElementById('toggleWaterParks');
+    const streetRadios = document.querySelectorAll('input[name="streetType"]');
     
-    // Instant toggle - just show/hide layers
-    featureWater?.addEventListener('change', (e) => {
-        layerWater.style.display = e.target.checked ? 'block' : 'none';
-    });
+    if (waterParksToggle) {
+        waterParksToggle.addEventListener('change', updateCurrentVariant);
+    }
     
-    featureParks?.addEventListener('change', (e) => {
-        layerParks.style.display = e.target.checked ? 'block' : 'none';
-    });
-    
-    featurePaths?.addEventListener('change', (e) => {
-        if (currentPreview?.layers?.paths) {
-            layerPaths.style.display = e.target.checked ? 'block' : 'none';
-        } else if (e.target.checked) {
-            // Paths not loaded yet - show loading indicator
-            pathsLoading.style.display = 'block';
-        }
+    streetRadios.forEach(radio => {
+        radio.addEventListener('change', updateCurrentVariant);
     });
 }
 
-function getSelectedFeatures() {
-    return {
-        water: document.getElementById('featureWater')?.checked || false,
-        parks: document.getElementById('featureParks')?.checked || false,
-        paths: document.getElementById('featurePaths')?.checked || false
-    };
+function updateCurrentVariant() {
+    const waterParksToggle = document.getElementById('toggleWaterParks');
+    const streetType = document.querySelector('input[name="streetType"]:checked')?.value || 'simple';
+    
+    const withWaterParks = waterParksToggle?.checked ?? true;
+    
+    // Determine which variant to show
+    let variantKey;
+    if (streetType === 'simple') {
+        variantKey = withWaterParks ? 'drive_with_wp' : 'drive_no_wp';
+    } else {
+        variantKey = withWaterParks ? 'all_with_wp' : 'all_no_wp';
+    }
+    
+    const variantUrl = variants[variantKey];
+    const previewImage = document.getElementById('previewImage');
+    
+    if (variantUrl && previewImage) {
+        previewImage.classList.add('loading');
+        previewImage.src = variantUrl + '?t=' + Date.now();
+        previewImage.onload = () => previewImage.classList.remove('loading');
+    } else if (!variantUrl && previewImage) {
+        // Variant not ready yet, show message
+        const statusEl = document.getElementById('allStreetsStatus');
+        if (streetType === 'all' && statusEl) {
+            statusEl.textContent = 'Loading...';
+        }
+    }
+}
+
+function updateVariantStatus() {
+    const allStreetsStatus = document.getElementById('allStreetsStatus');
+    const allStreetsRadio = document.querySelector('input[name="streetType"][value="all"]');
+    
+    const allReady = variants.all_with_wp && variants.all_no_wp;
+    
+    if (allStreetsStatus) {
+        allStreetsStatus.textContent = allReady ? 'Paths & cycleways' : 'Loading...';
+    }
+    
+    if (allStreetsRadio) {
+        allStreetsRadio.disabled = !allReady;
+    }
 }
 
 // ============================================
@@ -221,7 +247,6 @@ function setupRadiusGallery() {
         selectedDistance = parseInt(option.dataset.value, 10);
     });
     
-    // Set default
     const defaultOption = radiusGallery.querySelector('[data-value="5000"]');
     if (defaultOption) defaultOption.classList.add('selected');
 }
@@ -286,7 +311,6 @@ function setupEventListeners() {
         resetAll();
     });
     
-    // Preview zoom
     const previewWrapper = document.getElementById('previewWrapper');
     if (previewWrapper) {
         previewWrapper.addEventListener('click', openZoomModal);
@@ -296,6 +320,26 @@ function setupEventListeners() {
     const zoomModal = document.getElementById('zoomModal');
     if (zoomModalClose) zoomModalClose.addEventListener('click', closeZoomModal);
     if (zoomModal) zoomModal.querySelector('.modal-backdrop')?.addEventListener('click', closeZoomModal);
+    
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', handleCancel);
+    }
+}
+
+async function handleCancel() {
+    if (currentJobId) {
+        try {
+            await fetch(`/api/cancel/${currentJobId}`, { method: 'POST' });
+            showToast('Generation cancelled', 'info');
+        } catch (e) {
+            console.error('Cancel error:', e);
+        }
+        hideLoading();
+        generateBtn.classList.remove('loading');
+        generateBtn.disabled = false;
+        currentJobId = null;
+    }
 }
 
 // ============================================
@@ -358,7 +402,7 @@ function goToStep1() {
     step1.dataset.active = 'true';
     step2.dataset.active = 'false';
     updateStepIndicators(1);
-    stopPathsPolling();
+    stopVariantPolling();
 }
 
 function goToStep2() {
@@ -384,13 +428,16 @@ function resetAll() {
     selectedDistance = 5000;
     selectedSize = '50x70';
     currentPreview = null;
-    stopPathsPolling();
+    previews = [];
+    currentPreviewIndex = 0;
+    variants = { drive_with_wp: null, drive_no_wp: null, all_with_wp: null, all_no_wp: null };
+    stopVariantPolling();
     renderThemeGallery();
     goToStep1();
 }
 
 // ============================================
-// Preview Generation with Layers
+// Preview Generation
 // ============================================
 
 async function handleGenerate() {
@@ -427,6 +474,16 @@ async function handleGenerate() {
     
     console.log('Generating with settings:', settings);
     
+    // Reset variants
+    variants = { drive_with_wp: null, drive_no_wp: null, all_with_wp: null, all_no_wp: null };
+    updateVariantStatus();
+    
+    // Reset toggles
+    const waterParksToggle = document.getElementById('toggleWaterParks');
+    const simpleRadio = document.querySelector('input[name="streetType"][value="simple"]');
+    if (waterParksToggle) waterParksToggle.checked = true;
+    if (simpleRadio) simpleRadio.checked = true;
+    
     showLoading();
     generateBtn.classList.add('loading');
     generateBtn.disabled = true;
@@ -445,34 +502,55 @@ async function handleGenerate() {
         }
         
         const jobId = startResult.job_id;
+        currentJobId = jobId;
         
-        // Poll for progress
+        startProgressAnimation();
+        
         let complete = false;
         while (!complete) {
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 250));
             
             const progressResponse = await fetch(`/api/progress/${jobId}`);
             const progress = await progressResponse.json();
             
-            updateProgress(progress.step, progress.total, progress.message, progress.percent);
+            if (progress.status === 'cancelled') {
+                return;
+            }
+            
+            setTargetProgress(progress.percent, progress.message);
             
             if (progress.status === 'complete') {
                 complete = true;
+                currentJobId = null;
                 
-                // Store preview with layers
+                // Store variants
+                if (progress.variants) {
+                    variants = progress.variants;
+                }
+                
+                // Main preview URL is drive_with_wp
+                const previewUrl = progress.preview_url || variants.drive_with_wp;
+                
                 currentPreview = {
                     id: jobId,
-                    layers: progress.layers,
+                    previewUrl: previewUrl,
+                    variants: progress.variants,
                     settings: progress.settings || settings,
                     timestamp: Date.now()
                 };
                 
+                previews.push(currentPreview);
+                currentPreviewIndex = previews.length - 1;
+                
+                setTargetProgress(100, 'Done!');
+                await new Promise(r => setTimeout(r, 300));
+                
                 hideLoading();
-                showPreviewWithLayers(currentPreview);
+                showPreview(currentPreview);
                 goToStep2();
                 
-                // Start polling for paths layer
-                startPathsPolling(jobId);
+                // Start polling for variant availability
+                startVariantPolling(jobId);
                 
             } else if (progress.status === 'error') {
                 throw new Error(progress.error || 'Preview generation failed');
@@ -489,80 +567,108 @@ async function handleGenerate() {
     }
 }
 
-function showPreviewWithLayers(preview) {
+function showPreview(preview) {
     const settings = preview.settings;
-    const layers = preview.layers;
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
     const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
     
     previewCity.textContent = `${settings.city}, ${settings.country}`;
     previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
     
-    // Set layer sources with cache busting
-    const ts = Date.now();
-    layerBase.src = layers.base + '?t=' + ts;
-    layerWater.src = layers.water + '?t=' + ts;
-    layerParks.src = layers.parks + '?t=' + ts;
-    
-    // Show water and parks by default
-    layerWater.style.display = 'block';
-    layerParks.style.display = 'block';
-    
-    // Set checkbox states
-    document.getElementById('featureWater').checked = true;
-    document.getElementById('featureParks').checked = true;
-    document.getElementById('featurePaths').checked = false;
-    
-    // Paths not available yet
-    layerPaths.style.display = 'none';
-    pathsLoading.style.display = 'none';
-    
-    if (layers.paths) {
-        layerPaths.src = layers.paths + '?t=' + ts;
+    // Set preview image
+    const previewImage = document.getElementById('previewImage');
+    if (previewImage) {
+        previewImage.src = preview.previewUrl + '?t=' + Date.now();
     }
+    
+    // Update variants from preview
+    if (preview.variants) {
+        variants = { ...variants, ...preview.variants };
+    }
+    
+    updateVariantStatus();
+    renderPreviewsGrid();
+}
+
+function renderPreviewsGrid() {
+    const grid = document.querySelector('.previews-mini-grid');
+    if (!grid || previews.length <= 1) {
+        const container = document.querySelector('.previous-previews');
+        if (container) container.style.display = 'none';
+        return;
+    }
+    
+    const container = document.querySelector('.previous-previews');
+    if (container) container.style.display = 'block';
+    
+    grid.innerHTML = previews.map((p, i) => `
+        <div class="mini-preview ${i === currentPreviewIndex ? 'active' : ''}" data-index="${i}">
+            <img src="${p.previewUrl}" alt="Preview ${i + 1}">
+            <span class="mini-preview-label">v${i + 1}</span>
+        </div>
+    `).join('');
+    
+    grid.querySelectorAll('.mini-preview').forEach(el => {
+        el.addEventListener('click', () => {
+            const idx = parseInt(el.dataset.index);
+            currentPreviewIndex = idx;
+            currentPreview = previews[idx];
+            showPreview(currentPreview);
+            
+            // Restart variant polling for this preview
+            if (currentPreview.id) {
+                startVariantPolling(currentPreview.id);
+            }
+        });
+    });
 }
 
 // ============================================
-// Paths Layer Polling
+// Variant Polling
 // ============================================
 
-function startPathsPolling(jobId) {
-    stopPathsPolling();
+function startVariantPolling(jobId) {
+    stopVariantPolling();
     
-    pathsPollingInterval = setInterval(async () => {
+    variantPollingInterval = setInterval(async () => {
         try {
-            const response = await fetch(`/api/layers/${jobId}`);
+            const response = await fetch(`/api/variants/${jobId}`);
             const data = await response.json();
             
-            if (data.layers?.paths) {
-                // Paths are ready!
-                const ts = Date.now();
-                layerPaths.src = data.layers.paths + '?t=' + ts;
+            if (data.variants) {
+                let updated = false;
                 
-                if (currentPreview) {
-                    currentPreview.layers.paths = data.layers.paths;
+                // Update variants that weren't previously available
+                for (const key of Object.keys(data.variants)) {
+                    if (data.variants[key] && !variants[key]) {
+                        variants[key] = data.variants[key];
+                        updated = true;
+                    }
                 }
                 
-                // If paths checkbox is checked, show it
-                const featurePaths = document.getElementById('featurePaths');
-                if (featurePaths?.checked) {
-                    layerPaths.style.display = 'block';
+                if (updated) {
+                    updateVariantStatus();
+                    
+                    // Check if all variants are ready
+                    const allReady = variants.drive_with_wp && variants.drive_no_wp && 
+                                     variants.all_with_wp && variants.all_no_wp;
+                    
+                    if (allReady) {
+                        showToast('All variants ready! Toggle instantly.', 'success');
+                        stopVariantPolling();
+                    }
                 }
-                
-                pathsLoading.style.display = 'none';
-                stopPathsPolling();
-                console.log('Paths layer ready!');
             }
         } catch (error) {
-            console.error('Paths polling error:', error);
+            console.error('Variant polling error:', error);
         }
     }, 2000);
 }
 
-function stopPathsPolling() {
-    if (pathsPollingInterval) {
-        clearInterval(pathsPollingInterval);
-        pathsPollingInterval = null;
+function stopVariantPolling() {
+    if (variantPollingInterval) {
+        clearInterval(variantPollingInterval);
+        variantPollingInterval = null;
     }
 }
 
@@ -570,32 +676,66 @@ function stopPathsPolling() {
 // Progress Animation
 // ============================================
 
-let progressInterval = null;
-let displayPercent = 0;
+let progressAnimationFrame = null;
+let currentProgress = 0;
+let targetProgress = 0;
+let currentMessage = 'Starting...';
+let lastUpdateTime = Date.now();
+
+function startProgressAnimation() {
+    currentProgress = 0;
+    targetProgress = 0;
+    lastUpdateTime = Date.now();
+    animateProgress();
+}
+
+function setTargetProgress(percent, message) {
+    if (percent > targetProgress) {
+        targetProgress = percent;
+        lastUpdateTime = Date.now();
+    }
+    if (message) currentMessage = message;
+}
+
+function animateProgress() {
+    const now = Date.now();
+    const timeSinceUpdate = now - lastUpdateTime;
+    const creepAmount = Math.min(0.5, timeSinceUpdate / 1000 * 0.3);
+    
+    if (currentProgress < targetProgress) {
+        const diff = targetProgress - currentProgress;
+        const speed = Math.max(0.5, diff * 0.15);
+        currentProgress = Math.min(targetProgress, currentProgress + speed);
+    } else if (currentProgress < 95 && targetProgress < 100) {
+        currentProgress = Math.min(currentProgress + creepAmount * 0.1, targetProgress + 10);
+    }
+    
+    currentProgress = Math.min(99, Math.max(0, currentProgress));
+    
+    renderProgress(currentProgress, currentMessage);
+    
+    if (currentProgress < 99 || targetProgress < 100) {
+        progressAnimationFrame = requestAnimationFrame(animateProgress);
+    }
+}
 
 function showLoading() {
     loadingOverlay.classList.add('active');
-    displayPercent = 0;
+    currentProgress = 0;
+    targetProgress = 0;
     renderProgress(0, 'Starting...');
 }
 
 function hideLoading() {
     loadingOverlay.classList.remove('active');
-    if (progressInterval) {
-        clearInterval(progressInterval);
-        progressInterval = null;
+    if (progressAnimationFrame) {
+        cancelAnimationFrame(progressAnimationFrame);
+        progressAnimationFrame = null;
     }
 }
 
-function updateProgress(step, total, message, backendPercent = null) {
-    const percent = backendPercent || Math.round((step / total) * 100);
-    renderProgress(percent, message);
-}
-
 function renderProgress(percent, message) {
-    displayPercent = percent;
-    
-    const circumference = 2 * Math.PI * 54;
+    const circumference = 2 * Math.PI * 45;
     const offset = circumference - (percent / 100) * circumference;
     
     if (progressRing) progressRing.style.strokeDashoffset = offset;
@@ -611,15 +751,25 @@ async function handleGenerateFinal() {
     if (!currentPreview) return;
     
     const settings = currentPreview.settings;
-    const features = getSelectedFeatures();
     
-    // Merge features into settings for final generation
+    // Get toggle states
+    const waterParksToggle = document.getElementById('toggleWaterParks');
+    const streetType = document.querySelector('input[name="streetType"]:checked')?.value || 'simple';
+    
+    const withWaterParks = waterParksToggle?.checked ?? true;
+    const withPaths = streetType === 'all';
+    
     const finalSettings = {
         ...settings,
-        features: features
+        features: {
+            roads: true,
+            water: withWaterParks,
+            parks: withWaterParks,
+            paths: withPaths
+        }
     };
     
-    console.log('Generating final with features:', features);
+    console.log('Generating final with settings:', finalSettings);
     
     showFinalProgress(finalSettings);
     
@@ -645,7 +795,7 @@ async function handleGenerateFinal() {
             const progressResponse = await fetch(`/api/progress/${jobId}`);
             const progress = await progressResponse.json();
             
-            updateFinalProgress(progress.step, progress.total || 6, progress.message);
+            updateFinalProgress(progress.step, progress.total || 4, progress.message);
             
             if (progress.status === 'complete') {
                 complete = true;
@@ -764,12 +914,12 @@ let currentZoom = 1;
 function openZoomModal() {
     const zoomModal = document.getElementById('zoomModal');
     const zoomImage = document.getElementById('zoomImage');
+    const previewImage = document.getElementById('previewImage');
     
-    if (!zoomModal || !zoomImage || !layerBase.src) return;
+    if (!zoomModal || !zoomImage || !previewImage?.src) return;
     
     currentZoom = 1;
-    // Use base layer for zoom (it has the full composite appearance)
-    zoomImage.src = layerBase.src;
+    zoomImage.src = previewImage.src;
     zoomImage.style.transform = `scale(${currentZoom})`;
     
     zoomModal.classList.add('active');
