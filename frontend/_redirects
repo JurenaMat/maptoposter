@@ -4,6 +4,9 @@
 # API endpoints
 /api/*  https://api.maptoprint.com/api/:splat  200
 
+# Rewrite /static/examples/ to /examples/ (API returns /static/ paths)
+/static/examples/*  /examples/:splat  200
+
 # Proxy preview images from backend
 /previews/*  https://api.maptoprint.com/previews/:splat  200
 
@@ -11,5 +14,4 @@
 /posters/*  https://api.maptoprint.com/posters/:splat  200
 
 # SPA fallback - all other routes serve index.html
-# Note: Static files (examples/, *.js, *.css) are served directly by Cloudflare
 /*  /index.html  200
