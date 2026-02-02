@@ -563,7 +563,49 @@
 }
 
 .preview-image.loading {
-    opacity: 0.6;
+    opacity: 0.5;
+    filter: blur(2px);
+}
+
+/* Preview Loading Overlay (for theme/feature changes) */
+.preview-loading-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+    pointer-events: none;
+}
+
+.preview-loading-overlay.active {
+    display: flex;
+    pointer-events: auto;
+}
+
+.preview-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    background: rgba(10, 10, 10, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.preview-loading-spinner {
+    width: 40px;
+    height: 40px;
+    color: var(--accent);
+    animation: spin 1s linear infinite;
+}
+
+.preview-loading-text {
+    font-size: 0.9375rem;
+    color: var(--text-secondary);
 }
 
 .preview-image-wrapper img {
@@ -727,6 +769,252 @@
     margin-top: 0.75rem;
     padding-top: 0.75rem;
     border-top: 1px solid var(--border);
+}
+
+/* ============================================
+   Progressive Radius Selector
+   ============================================ */
+
+.radius-panel {
+    margin-bottom: 1rem;
+}
+
+.radius-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.radius-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-tertiary);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.radius-option:hover:not(.locked):not(.loading) {
+    border-color: var(--border-hover);
+    background: var(--bg-secondary);
+}
+
+.radius-option.selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.radius-option.loading {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.radius-option.locked {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.radius-option-indicator {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Icon visibility states */
+.radius-option .radius-check-icon,
+.radius-option .radius-loading-icon,
+.radius-option .radius-locked-icon {
+    display: none;
+}
+
+/* Ready state - show check only when selected */
+.radius-option[data-status="ready"] .radius-check-icon {
+    display: none;
+}
+.radius-option[data-status="ready"].selected .radius-check-icon {
+    display: block;
+    color: var(--accent);
+}
+
+/* Loading state */
+.radius-option[data-status="loading"] .radius-loading-icon {
+    display: block;
+    color: var(--accent);
+    animation: spin 1s linear infinite;
+}
+
+/* Pending/Locked state */
+.radius-option[data-status="pending"] .radius-locked-icon {
+    display: block;
+    color: var(--text-muted);
+}
+
+.radius-option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+}
+
+.radius-option-label {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.radius-option.selected .radius-option-label {
+    color: var(--accent);
+}
+
+.radius-option-status {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.radius-option[data-status="ready"] .radius-option-status {
+    color: #4ade80;
+}
+
+.radius-option[data-status="loading"] .radius-option-status {
+    color: var(--accent);
+}
+
+.radius-option.selected .radius-option-status {
+    color: var(--accent);
+    opacity: 0.8;
+}
+
+/* ============================================
+   Theme Switcher (Sidebar)
+   ============================================ */
+
+.theme-panel {
+    margin-bottom: 1rem;
+}
+
+.theme-switcher {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.theme-switcher::-webkit-scrollbar {
+    width: 4px;
+}
+
+.theme-switcher::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+}
+
+.theme-switcher::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 2px;
+}
+
+.theme-swatch {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 2px solid var(--border);
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.theme-swatch:hover {
+    border-color: var(--border-hover);
+    transform: scale(1.05);
+}
+
+.theme-swatch.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.theme-swatch-bg {
+    position: absolute;
+    inset: 0;
+}
+
+.theme-swatch-roads {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.theme-swatch-roads svg {
+    width: 70%;
+    height: 70%;
+    opacity: 0.8;
+}
+
+.theme-swatch-check {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.theme-swatch.selected .theme-swatch-check {
+    display: flex;
+}
+
+.theme-swatch-check svg {
+    width: 8px;
+    height: 8px;
+    color: var(--bg-primary);
+}
+
+/* Feature toggles panel */
+.features-panel .feature-toggles {
+    gap: 0.5rem;
+}
+
+.features-panel .feature-toggle {
+    padding: 0.5rem 0.75rem;
+}
+
+.features-panel .feature-name {
+    font-size: 0.875rem;
+}
+
+/* Locked radius styling */
+.radius-option.locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.radius-option.locked .radius-locked-icon {
+    display: block;
+    color: var(--text-muted);
+}
+
+.radius-option.locked .radius-check-icon,
+.radius-option.locked .radius-loading-icon {
+    display: none;
+}
+
+.radius-option.locked .radius-option-status {
+    color: var(--text-muted);
+    font-style: italic;
 }
 
 /* Street Type Selector (radio buttons) */
@@ -998,6 +1286,122 @@
 
 .loading-card {
     text-align: center;
+    max-width: 400px;
+}
+
+/* Fancy loading card with image + text combo */
+.loading-card-fancy {
+    max-width: 480px;
+    padding: 2rem;
+}
+
+.loading-stage-visual {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.loading-image-stack {
+    position: relative;
+    width: 280px;
+    height: 180px;
+    margin: 0 auto;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+}
+
+.loading-stage-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transform: scale(1.05);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.loading-stage-img.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.loading-stage-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse at center bottom,
+        rgba(212, 175, 55, 0.15) 0%,
+        transparent 60%
+    );
+    pointer-events: none;
+}
+
+.loading-stage-badge {
+    position: absolute;
+    bottom: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 48px;
+    background: var(--bg-secondary);
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    animation: badgeBounce 2s ease-in-out infinite;
+}
+
+.stage-emoji {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+@keyframes badgeBounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-4px); }
+}
+
+.loading-info {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.loading-text-group {
+    text-align: left;
+    flex: 1;
+}
+
+.progress-fun {
+    font-size: 0.9375rem;
+    color: var(--accent);
+    font-style: italic;
+    margin-top: 0.5rem;
+    min-height: 1.5em;
+    transition: opacity 0.2s ease;
+}
+
+/* Shrink progress ring in fancy card */
+.loading-card-fancy .progress-ring {
+    width: 70px;
+    height: 70px;
+    flex-shrink: 0;
+}
+
+.loading-card-fancy .progress-ring svg {
+    width: 70px;
+    height: 70px;
+}
+
+.loading-card-fancy .progress-percent {
+    font-size: 1rem;
+}
+
+.stage-emoji {
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .progress-ring {
