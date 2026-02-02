@@ -1,12 +1,12 @@
 """
 MapToPoster Web Application
 ===========================
-MVP v1.0 - 2026-02-01
+MVP v1.1 - 2026-02-02
 
 FastAPI backend for generating map posters via web interface.
 
 Features:
-- Preview generation (low-res, fast)
+- Preview generation with separate layers for instant toggling
 - Final high-res generation (300 DPI)
 - Theme gallery with 17 themes
 - City autocomplete via Nominatim
@@ -28,8 +28,6 @@ import uuid
 import time
 from pathlib import Path
 from typing import Optional
-from queue import Queue
-from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 
 from web.image_utils import generate_preview_from_png, r2_storage
@@ -68,7 +66,7 @@ from matplotlib.font_manager import FontProperties
 app = FastAPI(
     title="MapToPoster",
     description="Generate beautiful map posters for any city",
-    version="MVP-1.0.0",
+    version="MVP-1.1.0",
 )
 
 # CORS middleware for frontend
@@ -133,28 +131,11 @@ class PosterResponse(BaseModel):
 # Store for active generation jobs and their progress
 jobs: dict = {}
 
-# Session data cache for fast feature toggling
-# Stores fetched OSM data per preview job so re-renders don't require re-downloading
-# Structure: {job_id: {point, dist, theme, graph_drive, graph_all, water, parks, last_access}}
-session_cache: dict = {}
-SESSION_CACHE_TTL = 1800  # 30 minutes in seconds
-
-def cleanup_session_cache():
-    """Remove expired session cache entries."""
-    now = time.time()
-    expired = [k for k, v in session_cache.items() if now - v.get('last_access', 0) > SESSION_CACHE_TTL]
-    for k in expired:
-        del session_cache[k]
-    if expired:
-        print(f"  Cleaned up {len(expired)} expired session cache entries")
-
 # Thread pool for running heavy generation tasks
-# Increased to 4 to handle multiple concurrent generations
 executor = ThreadPoolExecutor(max_workers=4)
 
-# Max distance for previews (to limit memory usage on deployed servers)
-# For local development, allow full range. For production, may need to reduce.
-MAX_PREVIEW_DISTANCE = 20000  # Allow up to 20km for previews
+# Max distance for previews
+MAX_PREVIEW_DISTANCE = 20000
 
 # Progress steps for display
 PROGRESS_STEPS = {
@@ -176,7 +157,7 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check endpoint for Railway."""
-    return {"status": "healthy", "version": "MVP-1.0.0"}
+    return {"status": "healthy", "version": "MVP-1.1.0"}
 
 
 @app.get("/api/progress/{job_id}")
@@ -212,7 +193,6 @@ async def get_themes():
 @app.get("/api/examples")
 async def get_examples():
     """Get example posters to showcase on homepage."""
-    # Use optimized WebP previews instead of full PNGs
     examples = [
         {"city": "San Francisco", "country": "USA", "theme": "sunset",
          "image": "/static/examples/san_francisco_sunset_thumb.webp",
@@ -242,6 +222,289 @@ async def get_examples():
     return examples
 
 
+def generate_layer_images(
+    city, country, point, dist, output_base,
+    width=12, height=16, theme=None, fonts=None, dpi=72,
+    progress_callback=None
+):
+    """
+    Generate separate layer images for frontend compositing.
+    
+    Returns dict with layer URLs:
+    - base: roads + gradients + typography (always visible)
+    - water: transparent PNG with water only
+    - parks: transparent PNG with parks only
+    - paths: transparent PNG with paths only (generated in background)
+    """
+    THEME = theme or load_theme("noir")
+    create_map_poster.THEME = THEME
+    
+    total_steps = 6
+    current_step = 0
+    
+    def update_progress(step_name, percent=None):
+        nonlocal current_step
+        current_step += 1
+        if percent is None:
+            percent = int((current_step / total_steps) * 100)
+        if progress_callback:
+            progress_callback(step_name, current_step, total_steps, percent)
+        print(f"  [{current_step}/{total_steps}] {step_name}")
+    
+    # Step 1: Get location (already done by caller, but for progress)
+    update_progress("Searching for your location", 5)
+    
+    # Calculate compensated distance for viewport
+    compensated_dist = dist * (max(height, width) / min(height, width)) / 4
+    
+    # Step 2: Fetch roads (drive only for speed)
+    update_progress("Loading streets", 15)
+    g_drive = fetch_graph(point, compensated_dist, network_type='drive')
+    if g_drive is None:
+        raise RuntimeError("Failed to retrieve street network data.")
+    
+    # Step 3: Fetch water
+    update_progress("Adding water elements", 40)
+    water = fetch_features(
+        point, compensated_dist,
+        tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
+        name="water"
+    )
+    
+    # Step 4: Fetch parks
+    update_progress("Adding parks and greenery", 60)
+    parks = fetch_features(
+        point, compensated_dist,
+        tags={"leisure": "park", "landuse": "grass"},
+        name="parks"
+    )
+    
+    # Project graph once
+    g_proj = ox.project_graph(g_drive)
+    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, None, compensated_dist)
+    
+    # We need a dummy figure to calculate crop limits properly
+    fig_temp, ax_temp = plt.subplots(figsize=(width, height))
+    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig_temp, compensated_dist)
+    plt.close(fig_temp)
+    
+    # Project water and parks once
+    water_polys = None
+    if water is not None and not water.empty:
+        water_polys = water[water.geometry.type.isin(["Polygon", "MultiPolygon"])]
+        if not water_polys.empty:
+            try:
+                water_polys = ox.projection.project_gdf(water_polys)
+            except Exception:
+                water_polys = water_polys.to_crs(g_proj.graph['crs'])
+    
+    parks_polys = None
+    if parks is not None and not parks.empty:
+        parks_polys = parks[parks.geometry.type.isin(["Polygon", "MultiPolygon"])]
+        if not parks_polys.empty:
+            try:
+                parks_polys = ox.projection.project_gdf(parks_polys)
+            except Exception:
+                parks_polys = parks_polys.to_crs(g_proj.graph['crs'])
+    
+    # Step 5: Render all layers
+    update_progress("Rendering map layers", 75)
+    
+    edge_colors = get_edge_colors_by_type(g_proj)
+    edge_widths = get_edge_widths_by_type(g_proj)
+    
+    # Typography settings
+    scale_factor = min(height, width) / 12.0
+    active_fonts = fonts or FONTS
+    
+    display_city = city
+    display_country = country
+    
+    if is_latin_script(display_city):
+        spaced_city = "  ".join(list(display_city.upper()))
+    else:
+        spaced_city = display_city
+    
+    base_main = 60 * scale_factor
+    city_char_count = len(display_city)
+    if city_char_count > 10:
+        length_factor = 10 / city_char_count
+        adjusted_font_size = max(base_main * length_factor, 10 * scale_factor)
+    else:
+        adjusted_font_size = base_main
+    
+    if active_fonts:
+        font_main = FontProperties(fname=active_fonts["bold"], size=adjusted_font_size)
+        font_sub = FontProperties(fname=active_fonts["light"], size=22 * scale_factor)
+        font_coords = FontProperties(fname=active_fonts["regular"], size=14 * scale_factor)
+    else:
+        font_main = FontProperties(family="monospace", weight="bold", size=adjusted_font_size)
+        font_sub = FontProperties(family="monospace", size=22 * scale_factor)
+        font_coords = FontProperties(family="monospace", size=14 * scale_factor)
+    
+    lat, lon = point
+    coords_text = f"{lat:.4f}° {'N' if lat >= 0 else 'S'} / {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
+    
+    # === Generate BASE layer (roads + gradients + text) ===
+    fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
+    ax.set_facecolor(THEME["bg"])
+    ax.set_position((0.0, 0.0, 1.0, 1.0))
+    
+    ox.plot_graph(
+        g_proj, ax=ax, bgcolor=THEME['bg'],
+        node_size=0, edge_color=edge_colors, edge_linewidth=edge_widths,
+        show=False, close=False,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlim(crop_xlim)
+    ax.set_ylim(crop_ylim)
+    
+    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
+    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
+    
+    ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes, color=THEME["text"],
+            ha="center", fontproperties=font_main, zorder=11)
+    ax.text(0.5, 0.10, display_country.upper(), transform=ax.transAxes, color=THEME["text"],
+            ha="center", fontproperties=font_sub, zorder=11)
+    ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=THEME["text"],
+            alpha=0.7, ha="center", fontproperties=font_coords, zorder=11)
+    ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
+            linewidth=1 * scale_factor, zorder=11)
+    
+    base_file = f"{output_base}_base.png"
+    plt.savefig(base_file, format="png", dpi=dpi, facecolor=THEME["bg"],
+                bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+    
+    # === Generate WATER layer (transparent) ===
+    water_file = f"{output_base}_water.png"
+    if water_polys is not None and not water_polys.empty:
+        fig, ax = plt.subplots(figsize=(width, height), facecolor='none')
+        ax.set_facecolor('none')
+        ax.set_position((0.0, 0.0, 1.0, 1.0))
+        
+        water_polys.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=1)
+        
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(crop_xlim)
+        ax.set_ylim(crop_ylim)
+        ax.axis('off')
+        
+        plt.savefig(water_file, format="png", dpi=dpi, transparent=True,
+                    bbox_inches="tight", pad_inches=0.05)
+        plt.close(fig)
+    else:
+        # Create empty transparent image
+        fig, ax = plt.subplots(figsize=(width, height), facecolor='none')
+        ax.set_facecolor('none')
+        ax.axis('off')
+        plt.savefig(water_file, format="png", dpi=dpi, transparent=True,
+                    bbox_inches="tight", pad_inches=0.05)
+        plt.close(fig)
+    
+    # === Generate PARKS layer (transparent) ===
+    parks_file = f"{output_base}_parks.png"
+    if parks_polys is not None and not parks_polys.empty:
+        fig, ax = plt.subplots(figsize=(width, height), facecolor='none')
+        ax.set_facecolor('none')
+        ax.set_position((0.0, 0.0, 1.0, 1.0))
+        
+        parks_polys.plot(ax=ax, facecolor=THEME['parks'], edgecolor='none', zorder=1)
+        
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(crop_xlim)
+        ax.set_ylim(crop_ylim)
+        ax.axis('off')
+        
+        plt.savefig(parks_file, format="png", dpi=dpi, transparent=True,
+                    bbox_inches="tight", pad_inches=0.05)
+        plt.close(fig)
+    else:
+        fig, ax = plt.subplots(figsize=(width, height), facecolor='none')
+        ax.set_facecolor('none')
+        ax.axis('off')
+        plt.savefig(parks_file, format="png", dpi=dpi, transparent=True,
+                    bbox_inches="tight", pad_inches=0.05)
+        plt.close(fig)
+    
+    # Step 6: Save/finalize
+    update_progress("Finishing up", 95)
+    
+    plt.close('all')
+    gc.collect()
+    
+    return {
+        'base_file': base_file,
+        'water_file': water_file,
+        'parks_file': parks_file,
+        'crop_xlim': crop_xlim,
+        'crop_ylim': crop_ylim,
+        'g_proj_crs': g_proj.graph['crs'],
+        'compensated_dist': compensated_dist,
+        'point': point,
+        'theme': THEME,
+        'width': width,
+        'height': height,
+        'dpi': dpi,
+    }
+
+
+def generate_paths_layer(
+    point, compensated_dist, crop_xlim, crop_ylim, g_proj_crs,
+    output_file, theme, width, height, dpi
+):
+    """Generate paths layer in background (separate thread)."""
+    try:
+        # Fetch paths (all network includes walking/cycling paths)
+        g_all = fetch_graph(point, compensated_dist, network_type='all')
+        if g_all is None:
+            return None
+        
+        g_proj = ox.project_graph(g_all)
+        
+        # Get only the path edges (not roads)
+        path_colors = []
+        path_widths = []
+        for _u, _v, data in g_proj.edges(data=True):
+            highway = data.get('highway', 'unclassified')
+            if isinstance(highway, list):
+                highway = highway[0] if highway else 'unclassified'
+            
+            # Only include paths/cycleways, not roads
+            if highway in ['path', 'footway', 'cycleway', 'pedestrian', 'track', 'bridleway', 'steps']:
+                path_colors.append(theme.get('road_residential', '#888888'))
+                path_widths.append(0.3)
+            else:
+                path_colors.append('none')
+                path_widths.append(0)
+        
+        # Render paths layer
+        fig, ax = plt.subplots(figsize=(width, height), facecolor='none')
+        ax.set_facecolor('none')
+        ax.set_position((0.0, 0.0, 1.0, 1.0))
+        
+        ox.plot_graph(
+            g_proj, ax=ax, bgcolor='none',
+            node_size=0, edge_color=path_colors, edge_linewidth=path_widths,
+            show=False, close=False,
+        )
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(crop_xlim)
+        ax.set_ylim(crop_ylim)
+        ax.axis('off')
+        
+        plt.savefig(output_file, format="png", dpi=dpi, transparent=True,
+                    bbox_inches="tight", pad_inches=0.05)
+        plt.close(fig)
+        plt.close('all')
+        gc.collect()
+        
+        return output_file
+    except Exception as e:
+        print(f"Error generating paths layer: {e}")
+        return None
+
+
 def create_poster_internal(
     city, country, point, dist, output_file, 
     width=12, height=16, theme=None, fonts=None, dpi=300, progress_callback=None,
@@ -249,26 +512,15 @@ def create_poster_internal(
 ):
     """
     Internal poster generation with progress callbacks.
-    
-    Args:
-        progress_callback: Function to call with (step_name, step_number, total_steps)
-        features: Dict with keys 'roads', 'paths', 'water', 'parks' (all bool)
+    Used for final high-res generation.
     """
     THEME = theme or load_theme("noir")
     create_map_poster.THEME = THEME
     
-    # Default features: just roads
     if features is None:
-        features = {'roads': True, 'paths': False, 'water': False, 'parks': False}
+        features = {'roads': True, 'paths': False, 'water': True, 'parks': True}
     
-    # Calculate total steps based on enabled features
-    total_steps = 2  # Always: location + roads
-    if features.get('water'):
-        total_steps += 1
-    if features.get('parks'):
-        total_steps += 1
-    total_steps += 2  # render + save
-    
+    total_steps = 6
     current_step = 0
     
     def update_progress(step_name):
@@ -281,10 +533,8 @@ def create_poster_internal(
     
     update_progress("Searching for your location")
     
-    # Calculate compensated distance for viewport
     compensated_dist = dist * (max(height, width) / min(height, width)) / 4
     
-    # Determine network type based on features
     network_type = 'all' if features.get('paths') else 'drive'
     update_progress("Loading streets" + (" & paths" if features.get('paths') else ""))
     
@@ -302,6 +552,8 @@ def create_poster_internal(
             tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
             name="water"
         )
+    else:
+        update_progress("Skipping water")
     
     if features.get('parks'):
         update_progress("Adding parks and greenery")
@@ -310,18 +562,17 @@ def create_poster_internal(
             tags={"leisure": "park", "landuse": "grass"},
             name="parks"
         )
+    else:
+        update_progress("Skipping parks")
     
     update_progress("Putting it all together")
     
-    # Setup plot
     fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
     ax.set_facecolor(THEME["bg"])
     ax.set_position((0.0, 0.0, 1.0, 1.0))
     
-    # Project graph
     g_proj = ox.project_graph(g)
     
-    # Plot water
     if water is not None and not water.empty:
         water_polys = water[water.geometry.type.isin(["Polygon", "MultiPolygon"])]
         if not water_polys.empty:
@@ -331,7 +582,6 @@ def create_poster_internal(
                 water_polys = water_polys.to_crs(g_proj.graph['crs'])
             water_polys.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=0.5)
     
-    # Plot parks
     if parks is not None and not parks.empty:
         parks_polys = parks[parks.geometry.type.isin(["Polygon", "MultiPolygon"])]
         if not parks_polys.empty:
@@ -341,7 +591,6 @@ def create_poster_internal(
                 parks_polys = parks_polys.to_crs(g_proj.graph['crs'])
             parks_polys.plot(ax=ax, facecolor=THEME['parks'], edgecolor='none', zorder=0.8)
     
-    # Plot roads
     edge_colors = get_edge_colors_by_type(g_proj)
     edge_widths = get_edge_widths_by_type(g_proj)
     crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig, compensated_dist)
@@ -355,11 +604,9 @@ def create_poster_internal(
     ax.set_xlim(crop_xlim)
     ax.set_ylim(crop_ylim)
     
-    # Gradients
     create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
     create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
     
-    # Typography
     scale_factor = min(height, width) / 12.0
     active_fonts = fonts or FONTS
     
@@ -371,7 +618,6 @@ def create_poster_internal(
     else:
         spaced_city = display_city
     
-    # Adjust font size for long names
     base_main = 60 * scale_factor
     city_char_count = len(display_city)
     if city_char_count > 10:
@@ -384,28 +630,21 @@ def create_poster_internal(
         font_main = FontProperties(fname=active_fonts["bold"], size=adjusted_font_size)
         font_sub = FontProperties(fname=active_fonts["light"], size=22 * scale_factor)
         font_coords = FontProperties(fname=active_fonts["regular"], size=14 * scale_factor)
-        font_attr = FontProperties(fname=active_fonts["light"], size=8 * scale_factor)
     else:
         font_main = FontProperties(family="monospace", weight="bold", size=adjusted_font_size)
         font_sub = FontProperties(family="monospace", size=22 * scale_factor)
         font_coords = FontProperties(family="monospace", size=14 * scale_factor)
-        font_attr = FontProperties(family="monospace", size=8 * scale_factor)
     
-    # City name
     ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes, color=THEME["text"],
             ha="center", fontproperties=font_main, zorder=11)
-    
-    # Country
     ax.text(0.5, 0.10, display_country.upper(), transform=ax.transAxes, color=THEME["text"],
             ha="center", fontproperties=font_sub, zorder=11)
     
-    # Coordinates
     lat, lon = point
     coords_text = f"{lat:.4f}° {'N' if lat >= 0 else 'S'} / {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
     ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=THEME["text"],
             alpha=0.7, ha="center", fontproperties=font_coords, zorder=11)
     
-    # Line
     ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
             linewidth=1 * scale_factor, zorder=11)
     
@@ -413,229 +652,46 @@ def create_poster_internal(
     plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
                 bbox_inches="tight", pad_inches=0.05)
     plt.close(fig)
-    plt.close('all')  # Ensure all figures are closed
+    plt.close('all')
     
-    # Clear references to help garbage collection
-    del g, g_proj, water, parks, edge_colors, edge_widths
+    del g, g_proj
     gc.collect()
     
     return True
 
 
-def render_with_cached_data(
-    city, country, point, dist, output_file,
-    width=12, height=16, theme=None, fonts=None, dpi=72,
-    progress_callback=None, features=None,
-    cached_graph_drive=None, cached_graph_all=None, 
-    cached_water=None, cached_parks=None
-):
-    """
-    Render a poster using pre-fetched cached data.
-    This is much faster than create_poster_internal because it skips OSM downloads.
-    
-    Returns: dict with the data used (for caching by caller)
-    """
-    THEME = theme or load_theme("noir")
-    create_map_poster.THEME = THEME
-    
-    if features is None:
-        features = {'roads': True, 'paths': False, 'water': True, 'parks': True}
-    
-    # Determine which graph to use
-    use_paths = features.get('paths', False)
-    
-    # Calculate compensated distance
-    compensated_dist = dist * (max(height, width) / min(height, width)) / 4
-    
-    current_step = 0
-    total_steps = 3  # Simplified: load data, render, save
-    
-    def update_progress(step_name):
-        nonlocal current_step
-        current_step += 1
-        percent = int((current_step / total_steps) * 100)
-        if progress_callback:
-            progress_callback(step_name, current_step, total_steps, percent)
-        print(f"  [{current_step}/{total_steps}] {step_name}")
-    
-    # Step 1: Get or fetch graph
-    update_progress("Loading map data")
-    
-    if use_paths:
-        if cached_graph_all is not None:
-            g = cached_graph_all
-        else:
-            # Need to fetch the 'all' network
-            g = fetch_graph(point, compensated_dist, network_type='all')
-            cached_graph_all = g
-    else:
-        if cached_graph_drive is not None:
-            g = cached_graph_drive
-        else:
-            g = fetch_graph(point, compensated_dist, network_type='drive')
-            cached_graph_drive = g
-    
-    if g is None:
-        raise RuntimeError("Failed to retrieve street network data.")
-    
-    # Get water and parks from cache or fetch
-    water = cached_water
-    parks = cached_parks
-    
-    if features.get('water') and water is None:
-        water = fetch_features(
-            point, compensated_dist,
-            tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
-            name="water"
-        )
-        cached_water = water
-    
-    if features.get('parks') and parks is None:
-        parks = fetch_features(
-            point, compensated_dist,
-            tags={"leisure": "park", "landuse": "grass"},
-            name="parks"
-        )
-        cached_parks = parks
-    
-    # Step 2: Render
-    update_progress("Rendering map")
-    
-    fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
-    ax.set_facecolor(THEME["bg"])
-    ax.set_position((0.0, 0.0, 1.0, 1.0))
-    
-    g_proj = ox.project_graph(g)
-    
-    # Plot water if enabled
-    if features.get('water') and water is not None and not water.empty:
-        water_polys = water[water.geometry.type.isin(["Polygon", "MultiPolygon"])]
-        if not water_polys.empty:
-            try:
-                water_polys = ox.projection.project_gdf(water_polys)
-            except Exception:
-                water_polys = water_polys.to_crs(g_proj.graph['crs'])
-            water_polys.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=0.5)
-    
-    # Plot parks if enabled
-    if features.get('parks') and parks is not None and not parks.empty:
-        parks_polys = parks[parks.geometry.type.isin(["Polygon", "MultiPolygon"])]
-        if not parks_polys.empty:
-            try:
-                parks_polys = ox.projection.project_gdf(parks_polys)
-            except Exception:
-                parks_polys = parks_polys.to_crs(g_proj.graph['crs'])
-            parks_polys.plot(ax=ax, facecolor=THEME['parks'], edgecolor='none', zorder=0.8)
-    
-    # Plot roads
-    edge_colors = get_edge_colors_by_type(g_proj)
-    edge_widths = get_edge_widths_by_type(g_proj)
-    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig, compensated_dist)
-    
-    ox.plot_graph(
-        g_proj, ax=ax, bgcolor=THEME['bg'],
-        node_size=0, edge_color=edge_colors, edge_linewidth=edge_widths,
-        show=False, close=False,
-    )
-    ax.set_aspect("equal", adjustable="box")
-    ax.set_xlim(crop_xlim)
-    ax.set_ylim(crop_ylim)
-    
-    # Gradients
-    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
-    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
-    
-    # Typography
-    scale_factor = min(height, width) / 12.0
-    active_fonts = fonts or FONTS
-    
-    display_city = city
-    display_country = country
-    
-    if is_latin_script(display_city):
-        spaced_city = "  ".join(list(display_city.upper()))
-    else:
-        spaced_city = display_city
-    
-    base_main = 60 * scale_factor
-    city_char_count = len(display_city)
-    if city_char_count > 10:
-        length_factor = 10 / city_char_count
-        adjusted_font_size = max(base_main * length_factor, 10 * scale_factor)
-    else:
-        adjusted_font_size = base_main
-    
-    if active_fonts:
-        font_main = FontProperties(fname=active_fonts["bold"], size=adjusted_font_size)
-        font_sub = FontProperties(fname=active_fonts["light"], size=22 * scale_factor)
-        font_coords = FontProperties(fname=active_fonts["regular"], size=14 * scale_factor)
-    else:
-        font_main = FontProperties(family="monospace", weight="bold", size=adjusted_font_size)
-        font_sub = FontProperties(family="monospace", size=22 * scale_factor)
-        font_coords = FontProperties(family="monospace", size=14 * scale_factor)
-    
-    ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes, color=THEME["text"],
-            ha="center", fontproperties=font_main, zorder=11)
-    ax.text(0.5, 0.10, display_country.upper(), transform=ax.transAxes, color=THEME["text"],
-            ha="center", fontproperties=font_sub, zorder=11)
-    
-    lat, lon = point
-    coords_text = f"{lat:.4f}° {'N' if lat >= 0 else 'S'} / {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
-    ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=THEME["text"],
-            alpha=0.7, ha="center", fontproperties=font_coords, zorder=11)
-    
-    ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
-            linewidth=1 * scale_factor, zorder=11)
-    
-    # Step 3: Save
-    update_progress("Saving image")
-    plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
-                bbox_inches="tight", pad_inches=0.05)
-    plt.close(fig)
-    plt.close('all')
-    gc.collect()
-    
-    # Return the cached data for storage
-    return {
-        'graph_drive': cached_graph_drive,
-        'graph_all': cached_graph_all,
-        'water': cached_water,
-        'parks': cached_parks,
-    }
-
-
 @app.post("/api/preview/start")
 async def start_preview(request: PreviewRequest):
-    """Start a preview generation and return job_id for progress tracking."""
+    """
+    Start a preview generation with separate layers for instant UI toggling.
+    
+    Returns layer URLs:
+    - base: roads + gradients + typography
+    - water: transparent water layer
+    - parks: transparent parks layer
+    - paths: transparent paths layer (loaded in background)
+    """
     print(f"✓ Preview request: {request.city}, {request.country}")
     
-    # Validate theme
     available_themes = get_available_themes()
     if request.theme not in available_themes:
         raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
     
-    # Create job
     job_id = uuid.uuid4().hex[:8]
-    # Sanitize city name for filename (remove path-unsafe characters)
-    city_slug = request.city.lower().replace(" ", "_").replace(",", "").replace("/", "-").replace("\\", "-").replace(":", "")
-    filename = f"preview_{city_slug}_{request.theme}_{job_id}.png"
+    city_slug = re.sub(r'[\\/:*?"<>|,\s]', '_', request.city.lower())
+    output_base = str(previews_path / f"preview_{city_slug}_{request.theme}_{job_id}")
     
     jobs[job_id] = {
         "step": 0,
         "total": 6,
         "status": "starting",
         "message": "Starting...",
-        "preview_url": None,
+        "layers": None,
         "error": None
     }
     
-    # Clean up old cache entries periodically
-    cleanup_session_cache()
-    
-    # Start generation in background
     async def run_generation():
         try:
-            # Step 1: Get coordinates
             jobs[job_id].update({"step": 1, "message": "Finding location", "status": "running"})
             
             try:
@@ -644,16 +700,13 @@ async def start_preview(request: PreviewRequest):
                 jobs[job_id].update({"status": "error", "error": str(e)})
                 return
             
-            # Load theme and fonts
             theme = load_theme(request.theme)
             fonts = load_fonts()
             
-            output_path = previews_path / filename
             preview_width = request.width / 2
             preview_height = request.height / 2
             preview_distance = min(request.distance, MAX_PREVIEW_DISTANCE)
             
-            # Progress callback with percentage
             def progress_callback(step_name, step_num, total, percent=0):
                 jobs[job_id].update({
                     "step": step_num,
@@ -663,213 +716,107 @@ async def start_preview(request: PreviewRequest):
                     "percent": percent
                 })
             
-            # Get features from request (default: water and parks on, paths off)
-            features_dict = {
-                'roads': True,
-                'paths': request.features.paths if request.features else False,
-                'water': request.features.water if request.features else True,
-                'parks': request.features.parks if request.features else True,
-            }
-            print(f"  Features: {features_dict}")
-            
-            # Run in thread pool with render_with_cached_data to get cacheable data
             loop = asyncio.get_event_loop()
-            cached_data = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 executor,
-                lambda: render_with_cached_data(
+                lambda: generate_layer_images(
                     city=request.city,
                     country=request.country,
                     point=coords,
                     dist=preview_distance,
-                    output_file=str(output_path),
+                    output_base=output_base,
                     width=preview_width,
                     height=preview_height,
                     theme=theme,
                     fonts=fonts,
                     dpi=72,
                     progress_callback=progress_callback,
-                    features=features_dict,
                 )
             )
             
-            # Store in session cache for fast re-renders
-            session_cache[job_id] = {
-                'point': coords,
-                'dist': preview_distance,
-                'theme_name': request.theme,
-                'city': request.city,
-                'country': request.country,
-                'width': preview_width,
-                'height': preview_height,
-                'graph_drive': cached_data.get('graph_drive'),
-                'graph_all': cached_data.get('graph_all'),
-                'water': cached_data.get('water'),
-                'parks': cached_data.get('parks'),
-                'last_access': time.time(),
-                'filename_base': f"preview_{city_slug}_{request.theme}",
-            }
-            print(f"  Cached session data for job {job_id}")
+            # Get filenames from paths
+            base_filename = Path(result['base_file']).name
+            water_filename = Path(result['water_file']).name
+            parks_filename = Path(result['parks_file']).name
             
-            gc.collect()
+            layers = {
+                "base": f"/previews/{base_filename}",
+                "water": f"/previews/{water_filename}",
+                "parks": f"/previews/{parks_filename}",
+                "paths": None  # Will be generated in background
+            }
             
             jobs[job_id].update({
-                "step": jobs[job_id].get("total", 6),
+                "step": 6,
+                "total": 6,
                 "status": "complete",
                 "message": "Done!",
                 "percent": 100,
-                "preview_url": f"/previews/{filename}",
+                "layers": layers,
                 "coords": list(coords),
-                "features": features_dict  # Store features for high-res
+                "settings": {
+                    "city": request.city,
+                    "country": request.country,
+                    "theme": request.theme,
+                    "distance": preview_distance,
+                    "width": request.width,
+                    "height": request.height,
+                }
             })
+            
+            # Start paths generation in background
+            paths_file = f"{output_base}_paths.png"
+            asyncio.create_task(generate_paths_background(
+                job_id, coords, result['compensated_dist'],
+                result['crop_xlim'], result['crop_ylim'], result['g_proj_crs'],
+                paths_file, theme, preview_width, preview_height, 72
+            ))
+            
+            gc.collect()
             
         except Exception as e:
             import traceback
             traceback.print_exc()
             jobs[job_id].update({"status": "error", "error": str(e)})
     
-    # Fire and forget
     asyncio.create_task(run_generation())
     
     return {"job_id": job_id, "status": "started"}
 
 
-@app.post("/api/preview")
-async def generate_preview_sync(request: PreviewRequest):
-    """Synchronous preview (backwards compatible) - starts job and waits for completion."""
-    # Start the job
-    result = await start_preview(request)
-    job_id = result["job_id"]
-    
-    # Poll until complete
-    while True:
-        job = jobs.get(job_id, {})
-        if job.get("status") in ["complete", "error"]:
-            break
-        await asyncio.sleep(0.1)
-    
-    if job.get("status") == "error":
-        raise HTTPException(status_code=500, detail=job.get("error", "Preview failed"))
-    
-    return {
-        "success": True,
-        "preview_url": job["preview_url"],
-        "coords": job.get("coords", []),
-        "preview_id": job_id,
-    }
-
-
-class PreviewUpdateRequest(BaseModel):
-    """Request model for fast preview update using cached data."""
-    job_id: str = Field(..., description="Original preview job ID")
-    features: MapFeatures = Field(..., description="New feature flags")
-
-
-@app.post("/api/preview/update")
-async def update_preview(request: PreviewUpdateRequest):
-    """
-    Fast preview update using cached session data.
-    Only re-renders (skips OSM download) - typically 2-3 seconds.
-    """
-    original_job_id = request.job_id
-    
-    # Check if we have cached data for this job
-    if original_job_id not in session_cache:
-        raise HTTPException(
-            status_code=404, 
-            detail="Session expired or not found. Please generate a new preview."
-        )
-    
-    cache = session_cache[original_job_id]
-    cache['last_access'] = time.time()  # Refresh TTL
-    
-    # Create new job for this update
-    new_job_id = uuid.uuid4().hex[:8]
-    filename = f"{cache['filename_base']}_{new_job_id}.png"
-    
-    jobs[new_job_id] = {
-        "step": 0,
-        "total": 3,
-        "status": "starting",
-        "message": "Updating...",
-        "preview_url": None,
-        "error": None
-    }
-    
-    features_dict = {
-        'roads': True,
-        'paths': request.features.paths,
-        'water': request.features.water,
-        'parks': request.features.parks,
-    }
-    
-    print(f"✓ Fast update request for job {original_job_id} -> {new_job_id}")
-    print(f"  Features: {features_dict}")
-    
-    async def run_update():
-        try:
-            theme = load_theme(cache['theme_name'])
-            fonts = load_fonts()
-            output_path = previews_path / filename
-            
-            def progress_callback(step_name, step_num, total, percent=0):
-                jobs[new_job_id].update({
-                    "step": step_num,
-                    "total": total,
-                    "message": step_name,
-                    "status": "running",
-                    "percent": percent
-                })
-            
-            loop = asyncio.get_event_loop()
-            updated_cache = await loop.run_in_executor(
-                executor,
-                lambda: render_with_cached_data(
-                    city=cache['city'],
-                    country=cache['country'],
-                    point=cache['point'],
-                    dist=cache['dist'],
-                    output_file=str(output_path),
-                    width=cache['width'],
-                    height=cache['height'],
-                    theme=theme,
-                    fonts=fonts,
-                    dpi=72,
-                    progress_callback=progress_callback,
-                    features=features_dict,
-                    cached_graph_drive=cache.get('graph_drive'),
-                    cached_graph_all=cache.get('graph_all'),
-                    cached_water=cache.get('water'),
-                    cached_parks=cache.get('parks'),
-                )
+async def generate_paths_background(job_id, point, compensated_dist, crop_xlim, crop_ylim, g_proj_crs, output_file, theme, width, height, dpi):
+    """Generate paths layer in background and update job when done."""
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor,
+            lambda: generate_paths_layer(
+                point, compensated_dist, crop_xlim, crop_ylim, g_proj_crs,
+                output_file, theme, width, height, dpi
             )
-            
-            # Update session cache with any newly fetched data (e.g., graph_all)
-            if updated_cache.get('graph_all') and not cache.get('graph_all'):
-                cache['graph_all'] = updated_cache['graph_all']
-                print(f"  Cached graph_all for job {original_job_id}")
-            
-            gc.collect()
-            
-            jobs[new_job_id].update({
-                "step": 3,
-                "total": 3,
-                "status": "complete",
-                "message": "Done!",
-                "percent": 100,
-                "preview_url": f"/previews/{filename}",
-                "coords": list(cache['point']),
-                "features": features_dict,
-                "original_job_id": original_job_id,  # Link back to original cache
-            })
-            
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            jobs[new_job_id].update({"status": "error", "error": str(e)})
+        )
+        
+        if result and job_id in jobs:
+            paths_filename = Path(output_file).name
+            if jobs[job_id].get("layers"):
+                jobs[job_id]["layers"]["paths"] = f"/previews/{paths_filename}"
+                print(f"  Paths layer ready for job {job_id}")
+    except Exception as e:
+        print(f"Error generating paths in background: {e}")
+
+
+@app.get("/api/layers/{job_id}")
+async def get_layers(job_id: str):
+    """Get current layer URLs for a job (for polling paths availability)."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
     
-    asyncio.create_task(run_update())
-    
-    return {"job_id": new_job_id, "status": "started", "original_job_id": original_job_id}
+    job = jobs[job_id]
+    return {
+        "layers": job.get("layers"),
+        "status": job.get("status"),
+        "settings": job.get("settings"),
+    }
 
 
 @app.post("/api/generate/start")
@@ -879,12 +826,10 @@ async def start_final_generation(request: PosterRequest):
     
     print(f"✓ Final generation request: {request.city}, {request.country} [job: {job_id}]")
     
-    # Validate theme upfront
     available_themes = get_available_themes()
     if request.theme not in available_themes:
         raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
     
-    # Sanitize city name for filename
     city_slug = re.sub(r'[\\/:*?"<>|]', '-', request.city.lower().replace(" ", "_").replace(",", ""))
     filename = f"{city_slug}_{request.theme}_{job_id}.png"
     
@@ -922,17 +867,13 @@ async def start_final_generation(request: PosterRequest):
                     "percent": percent
                 })
             
-            # Use same distance as preview - no artificial limit
-            final_distance = request.distance
-            
-            # Get features from request
             features_dict = {
                 'roads': True,
                 'paths': request.features.paths if request.features else False,
                 'water': request.features.water if request.features else True,
                 'parks': request.features.parks if request.features else True,
             }
-            print(f"  Features: {features_dict}")
+            print(f"  Final features: {features_dict}")
             
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -941,13 +882,13 @@ async def start_final_generation(request: PosterRequest):
                     city=request.city,
                     country=request.country,
                     point=coords,
-                    dist=final_distance,
+                    dist=request.distance,
                     output_file=str(output_path),
                     width=request.width,
                     height=request.height,
                     theme=theme,
                     fonts=fonts,
-                    dpi=150,  # Balanced: good for print, faster generation
+                    dpi=150,
                     progress_callback=progress_callback,
                     features=features_dict,
                 )
@@ -956,12 +897,13 @@ async def start_final_generation(request: PosterRequest):
             gc.collect()
             
             jobs[job_id].update({
-                "step": jobs[job_id].get("total", 6),
+                "step": 6,
+                "total": 6,
                 "status": "complete",
                 "message": "Done!",
                 "percent": 100,
                 "poster_url": f"/posters/{filename}",
-                "coords": list(coords)
+                "filename": filename,
             })
             
         except Exception as e:
@@ -969,132 +911,53 @@ async def start_final_generation(request: PosterRequest):
             traceback.print_exc()
             jobs[job_id].update({"status": "error", "error": str(e)})
     
-    # Fire and forget - don't await
     asyncio.create_task(run_generation())
     
     return {"job_id": job_id, "status": "started"}
 
 
-@app.post("/api/generate")
-async def generate_final_sync(request: PosterRequest):
-    """Synchronous final generation (backwards compatible) - starts job and waits."""
-    result = await start_final_generation(request)
-    job_id = result["job_id"]
-    
-    # Poll until complete
-    while True:
-        job = jobs.get(job_id, {})
-        if job.get("status") in ["complete", "error"]:
-            break
-        await asyncio.sleep(0.1)
-    
-    if job.get("status") == "error":
-        raise HTTPException(status_code=500, detail=job.get("error", "Generation failed"))
-    
-    return PosterResponse(
-        success=True,
-        message=f"Poster generated for {request.city}",
-        poster_url=job["poster_url"],
-        filename=job["filename"],
-        coords=job.get("coords", []),
-    )
-
-
-@app.get("/api/progress/{job_id}")
-async def get_progress(job_id: str):
-    """Get progress for a generation job."""
-    if job_id in jobs:
-        return jobs[job_id]
-    return {"status": "unknown", "progress": 0, "step": "Job not found"}
-
-
 @app.get("/api/geocode")
-async def geocode_location(q: str):
-    """Geocode any location (city, address, place) using Nominatim."""
-    import requests
+async def geocode(q: str):
+    """Geocode a search query to get city suggestions."""
+    from geopy.geocoders import Nominatim
+    
+    geolocator = Nominatim(user_agent="maptoposter", timeout=10)
     
     try:
-        response = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": q,
-                "format": "json",
-                "addressdetails": 1,
-                "limit": 8,
-                # No featuretype filter - allows addresses, streets, POIs, etc.
-            },
-            headers={"User-Agent": "MapToPoster/1.0"},
-            timeout=10,
-        )
-        response.raise_for_status()
+        # Search for locations
+        locations = geolocator.geocode(q, exactly_one=False, limit=5, addressdetails=True)
+        
+        if not locations:
+            return []
         
         results = []
-        seen = set()  # Avoid duplicates
+        seen = set()
         
-        for item in response.json():
-            address = item.get("address", {})
+        for loc in locations:
+            addr = loc.raw.get('address', {})
             
-            # Build a meaningful location name
-            # Priority: street address > place name > city
-            street = address.get("road") or address.get("street")
-            house_number = address.get("house_number")
-            suburb = address.get("suburb") or address.get("neighbourhood") or address.get("quarter")
-            city = (
-                address.get("city") or 
-                address.get("town") or 
-                address.get("village") or 
-                address.get("municipality") or
-                address.get("county") or
-                ""
-            )
-            country = address.get("country", "")
+            # Try to get city name
+            city = (addr.get('city') or addr.get('town') or 
+                   addr.get('village') or addr.get('municipality') or
+                   addr.get('hamlet') or q.split(',')[0].strip())
             
-            # Build location name based on what we have
-            if street and house_number:
-                location = f"{street} {house_number}"
-                if suburb:
-                    location = f"{location}, {suburb}"
-            elif street:
-                location = street
-                if suburb:
-                    location = f"{location}, {suburb}"
-            elif item.get("name"):
-                location = item.get("name")
-            else:
-                location = city
+            country = addr.get('country', '')
             
-            # Skip if no meaningful location or country
-            if not location or not country:
-                continue
-            
-            # Create display name
-            if city and city != location:
-                display = f"{location}, {city}, {country}"
-            else:
-                display = f"{location}, {country}"
-            
-            # Skip duplicates
-            key = (location.lower(), city.lower(), country.lower())
+            # Deduplicate
+            key = f"{city.lower()}_{country.lower()}"
             if key in seen:
                 continue
             seen.add(key)
             
             results.append({
-                "city": location,  # Use location as "city" for compatibility
-                "country": f"{city}, {country}" if city and city != location else country,
-                "display": display,
-                "lat": float(item["lat"]),
-                "lon": float(item["lon"]),
+                "city": city,
+                "country": country,
+                "lat": loc.latitude,
+                "lon": loc.longitude,
             })
         
         return results
         
     except Exception as e:
-        print(f"Geocode error: {e}")
+        print(f"Geocoding error: {e}")
         return []
-
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port, reload=True)

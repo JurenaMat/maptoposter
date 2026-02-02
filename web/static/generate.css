@@ -552,12 +552,53 @@
     max-height: 80vh;
 }
 
+/* Layer compositing - stack images on top of each other */
+.preview-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: 100%;
+    max-height: 75vh;
+    object-fit: contain;
+    border-radius: 8px;
+    transition: opacity 0.15s ease;
+}
+
+/* First layer (water) sets the size */
+.preview-layer:first-of-type {
+    position: relative;
+}
+
+/* Base layer gets the shadow */
+#layerBase {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Paths loading indicator */
+.paths-loading {
+    position: absolute;
+    bottom: 3.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.4rem 0.8rem;
+    background: rgba(232, 197, 71, 0.9);
+    color: var(--bg-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 100px;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .preview-image-wrapper img {
     max-width: 100%;
     max-height: 75vh;
     object-fit: contain;
     border-radius: 8px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .preview-badge {

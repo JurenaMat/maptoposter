@@ -217,10 +217,14 @@
         <!-- Step 2: Preview -->
         <section class="step-section" id="step2" data-active="false">
             <div class="preview-container">
-                <!-- Main Preview -->
+                <!-- Main Preview with Layer Compositing -->
                 <div class="preview-main">
                     <div class="preview-image-wrapper" id="previewWrapper">
-                        <img id="previewImage" src="" alt="Preview">
+                        <!-- Layer stack - order matters! Water/parks below roads -->
+                        <img id="layerWater" class="preview-layer" src="" alt="" style="display: none;">
+                        <img id="layerParks" class="preview-layer" src="" alt="" style="display: none;">
+                        <img id="layerBase" class="preview-layer" src="" alt="Preview">
+                        <img id="layerPaths" class="preview-layer" src="" alt="" style="display: none;">
                         <div class="preview-badge">Preview</div>
                         <div class="preview-zoom-hint">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -229,6 +233,9 @@
                                 <path d="M11 8v6M8 11h6"/>
                             </svg>
                             Click to zoom
+                        </div>
+                        <div class="paths-loading" id="pathsLoading" style="display: none;">
+                            <span>Loading paths...</span>
                         </div>
                     </div>
                 </div>
@@ -282,13 +289,7 @@
                                 </span>
                             </label>
                         </div>
-                        <button class="btn btn-secondary btn-full" id="regenerateBtn" style="display: none;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M23 4v6h-6M1 20v-6h6"/>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                            </svg>
-                            Update Preview
-                        </button>
+                        <!-- No regenerate button needed - toggles are instant! -->
                     </div>
 
                     <div class="preview-actions-main">
