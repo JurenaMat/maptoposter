@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-02-02 - Web App Release
+
+### Added
+- **Full Web Application** - Complete web interface for generating map posters
+  - City search with autocomplete (powered by Nominatim)
+  - Visual theme gallery with 17 themes
+  - Adjustable map radius (3km, 5km, 10km, 15km, 20km)
+  - Multiple poster sizes (21×30cm, 30×40cm, 40×50cm, 50×70cm)
+- **Customizable Map Features**
+  - Water (rivers, lakes, sea) - ON by default
+  - Parks & Greenery - ON by default
+  - Paths & Cycleways - optional (adds walking paths, bike lanes)
+- **Preview System**
+  - Fast preview generation with progress animation
+  - Multi-preview comparison (up to 3 previews)
+  - Zoom modal for detailed inspection
+  - Feature toggles to customize and regenerate
+- **High-Resolution Download**
+  - 150 DPI print-ready quality
+  - Remembers feature choices from preview
+  - Step-by-step progress tracking
+- **Deployment**
+  - Railway deployment support
+  - Docker containerization
+  - Health check endpoint
+
+---
+
 ## [Unreleased] - Community Contributions
 
 ### Added
