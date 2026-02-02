@@ -133,6 +133,21 @@ class PosterResponse(BaseModel):
 # Store for active generation jobs and their progress
 jobs: dict = {}
 
+# Session data cache for fast feature toggling
+# Stores fetched OSM data per preview job so re-renders don't require re-downloading
+# Structure: {job_id: {point, dist, theme, graph_drive, graph_all, water, parks, last_access}}
+session_cache: dict = {}
+SESSION_CACHE_TTL = 1800  # 30 minutes in seconds
+
+def cleanup_session_cache():
+    """Remove expired session cache entries."""
+    now = time.time()
+    expired = [k for k, v in session_cache.items() if now - v.get('last_access', 0) > SESSION_CACHE_TTL]
+    for k in expired:
+        del session_cache[k]
+    if expired:
+        print(f"  Cleaned up {len(expired)} expired session cache entries")
+
 # Thread pool for running heavy generation tasks
 # Increased to 4 to handle multiple concurrent generations
 executor = ThreadPoolExecutor(max_workers=4)
@@ -407,6 +422,188 @@ def create_poster_internal(
     return True
 
 
+def render_with_cached_data(
+    city, country, point, dist, output_file,
+    width=12, height=16, theme=None, fonts=None, dpi=72,
+    progress_callback=None, features=None,
+    cached_graph_drive=None, cached_graph_all=None, 
+    cached_water=None, cached_parks=None
+):
+    """
+    Render a poster using pre-fetched cached data.
+    This is much faster than create_poster_internal because it skips OSM downloads.
+    
+    Returns: dict with the data used (for caching by caller)
+    """
+    THEME = theme or load_theme("noir")
+    create_map_poster.THEME = THEME
+    
+    if features is None:
+        features = {'roads': True, 'paths': False, 'water': True, 'parks': True}
+    
+    # Determine which graph to use
+    use_paths = features.get('paths', False)
+    
+    # Calculate compensated distance
+    compensated_dist = dist * (max(height, width) / min(height, width)) / 4
+    
+    current_step = 0
+    total_steps = 3  # Simplified: load data, render, save
+    
+    def update_progress(step_name):
+        nonlocal current_step
+        current_step += 1
+        percent = int((current_step / total_steps) * 100)
+        if progress_callback:
+            progress_callback(step_name, current_step, total_steps, percent)
+        print(f"  [{current_step}/{total_steps}] {step_name}")
+    
+    # Step 1: Get or fetch graph
+    update_progress("Loading map data")
+    
+    if use_paths:
+        if cached_graph_all is not None:
+            g = cached_graph_all
+        else:
+            # Need to fetch the 'all' network
+            g = fetch_graph(point, compensated_dist, network_type='all')
+            cached_graph_all = g
+    else:
+        if cached_graph_drive is not None:
+            g = cached_graph_drive
+        else:
+            g = fetch_graph(point, compensated_dist, network_type='drive')
+            cached_graph_drive = g
+    
+    if g is None:
+        raise RuntimeError("Failed to retrieve street network data.")
+    
+    # Get water and parks from cache or fetch
+    water = cached_water
+    parks = cached_parks
+    
+    if features.get('water') and water is None:
+        water = fetch_features(
+            point, compensated_dist,
+            tags={"natural": ["water", "bay", "strait"], "waterway": "riverbank"},
+            name="water"
+        )
+        cached_water = water
+    
+    if features.get('parks') and parks is None:
+        parks = fetch_features(
+            point, compensated_dist,
+            tags={"leisure": "park", "landuse": "grass"},
+            name="parks"
+        )
+        cached_parks = parks
+    
+    # Step 2: Render
+    update_progress("Rendering map")
+    
+    fig, ax = plt.subplots(figsize=(width, height), facecolor=THEME["bg"])
+    ax.set_facecolor(THEME["bg"])
+    ax.set_position((0.0, 0.0, 1.0, 1.0))
+    
+    g_proj = ox.project_graph(g)
+    
+    # Plot water if enabled
+    if features.get('water') and water is not None and not water.empty:
+        water_polys = water[water.geometry.type.isin(["Polygon", "MultiPolygon"])]
+        if not water_polys.empty:
+            try:
+                water_polys = ox.projection.project_gdf(water_polys)
+            except Exception:
+                water_polys = water_polys.to_crs(g_proj.graph['crs'])
+            water_polys.plot(ax=ax, facecolor=THEME['water'], edgecolor='none', zorder=0.5)
+    
+    # Plot parks if enabled
+    if features.get('parks') and parks is not None and not parks.empty:
+        parks_polys = parks[parks.geometry.type.isin(["Polygon", "MultiPolygon"])]
+        if not parks_polys.empty:
+            try:
+                parks_polys = ox.projection.project_gdf(parks_polys)
+            except Exception:
+                parks_polys = parks_polys.to_crs(g_proj.graph['crs'])
+            parks_polys.plot(ax=ax, facecolor=THEME['parks'], edgecolor='none', zorder=0.8)
+    
+    # Plot roads
+    edge_colors = get_edge_colors_by_type(g_proj)
+    edge_widths = get_edge_widths_by_type(g_proj)
+    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig, compensated_dist)
+    
+    ox.plot_graph(
+        g_proj, ax=ax, bgcolor=THEME['bg'],
+        node_size=0, edge_color=edge_colors, edge_linewidth=edge_widths,
+        show=False, close=False,
+    )
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlim(crop_xlim)
+    ax.set_ylim(crop_ylim)
+    
+    # Gradients
+    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
+    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
+    
+    # Typography
+    scale_factor = min(height, width) / 12.0
+    active_fonts = fonts or FONTS
+    
+    display_city = city
+    display_country = country
+    
+    if is_latin_script(display_city):
+        spaced_city = "  ".join(list(display_city.upper()))
+    else:
+        spaced_city = display_city
+    
+    base_main = 60 * scale_factor
+    city_char_count = len(display_city)
+    if city_char_count > 10:
+        length_factor = 10 / city_char_count
+        adjusted_font_size = max(base_main * length_factor, 10 * scale_factor)
+    else:
+        adjusted_font_size = base_main
+    
+    if active_fonts:
+        font_main = FontProperties(fname=active_fonts["bold"], size=adjusted_font_size)
+        font_sub = FontProperties(fname=active_fonts["light"], size=22 * scale_factor)
+        font_coords = FontProperties(fname=active_fonts["regular"], size=14 * scale_factor)
+    else:
+        font_main = FontProperties(family="monospace", weight="bold", size=adjusted_font_size)
+        font_sub = FontProperties(family="monospace", size=22 * scale_factor)
+        font_coords = FontProperties(family="monospace", size=14 * scale_factor)
+    
+    ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes, color=THEME["text"],
+            ha="center", fontproperties=font_main, zorder=11)
+    ax.text(0.5, 0.10, display_country.upper(), transform=ax.transAxes, color=THEME["text"],
+            ha="center", fontproperties=font_sub, zorder=11)
+    
+    lat, lon = point
+    coords_text = f"{lat:.4f}° {'N' if lat >= 0 else 'S'} / {abs(lon):.4f}° {'E' if lon >= 0 else 'W'}"
+    ax.text(0.5, 0.07, coords_text, transform=ax.transAxes, color=THEME["text"],
+            alpha=0.7, ha="center", fontproperties=font_coords, zorder=11)
+    
+    ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, color=THEME["text"],
+            linewidth=1 * scale_factor, zorder=11)
+    
+    # Step 3: Save
+    update_progress("Saving image")
+    plt.savefig(output_file, format="png", dpi=dpi, facecolor=THEME["bg"],
+                bbox_inches="tight", pad_inches=0.05)
+    plt.close(fig)
+    plt.close('all')
+    gc.collect()
+    
+    # Return the cached data for storage
+    return {
+        'graph_drive': cached_graph_drive,
+        'graph_all': cached_graph_all,
+        'water': cached_water,
+        'parks': cached_parks,
+    }
+
+
 @app.post("/api/preview/start")
 async def start_preview(request: PreviewRequest):
     """Start a preview generation and return job_id for progress tracking."""
@@ -431,6 +628,9 @@ async def start_preview(request: PreviewRequest):
         "preview_url": None,
         "error": None
     }
+    
+    # Clean up old cache entries periodically
+    cleanup_session_cache()
     
     # Start generation in background
     async def run_generation():
@@ -472,11 +672,11 @@ async def start_preview(request: PreviewRequest):
             }
             print(f"  Features: {features_dict}")
             
-            # Run in thread pool
+            # Run in thread pool with render_with_cached_data to get cacheable data
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
+            cached_data = await loop.run_in_executor(
                 executor,
-                lambda: create_poster_internal(
+                lambda: render_with_cached_data(
                     city=request.city,
                     country=request.country,
                     point=coords,
@@ -491,6 +691,24 @@ async def start_preview(request: PreviewRequest):
                     features=features_dict,
                 )
             )
+            
+            # Store in session cache for fast re-renders
+            session_cache[job_id] = {
+                'point': coords,
+                'dist': preview_distance,
+                'theme_name': request.theme,
+                'city': request.city,
+                'country': request.country,
+                'width': preview_width,
+                'height': preview_height,
+                'graph_drive': cached_data.get('graph_drive'),
+                'graph_all': cached_data.get('graph_all'),
+                'water': cached_data.get('water'),
+                'parks': cached_data.get('parks'),
+                'last_access': time.time(),
+                'filename_base': f"preview_{city_slug}_{request.theme}",
+            }
+            print(f"  Cached session data for job {job_id}")
             
             gc.collect()
             
@@ -538,6 +756,120 @@ async def generate_preview_sync(request: PreviewRequest):
         "coords": job.get("coords", []),
         "preview_id": job_id,
     }
+
+
+class PreviewUpdateRequest(BaseModel):
+    """Request model for fast preview update using cached data."""
+    job_id: str = Field(..., description="Original preview job ID")
+    features: MapFeatures = Field(..., description="New feature flags")
+
+
+@app.post("/api/preview/update")
+async def update_preview(request: PreviewUpdateRequest):
+    """
+    Fast preview update using cached session data.
+    Only re-renders (skips OSM download) - typically 2-3 seconds.
+    """
+    original_job_id = request.job_id
+    
+    # Check if we have cached data for this job
+    if original_job_id not in session_cache:
+        raise HTTPException(
+            status_code=404, 
+            detail="Session expired or not found. Please generate a new preview."
+        )
+    
+    cache = session_cache[original_job_id]
+    cache['last_access'] = time.time()  # Refresh TTL
+    
+    # Create new job for this update
+    new_job_id = uuid.uuid4().hex[:8]
+    filename = f"{cache['filename_base']}_{new_job_id}.png"
+    
+    jobs[new_job_id] = {
+        "step": 0,
+        "total": 3,
+        "status": "starting",
+        "message": "Updating...",
+        "preview_url": None,
+        "error": None
+    }
+    
+    features_dict = {
+        'roads': True,
+        'paths': request.features.paths,
+        'water': request.features.water,
+        'parks': request.features.parks,
+    }
+    
+    print(f"✓ Fast update request for job {original_job_id} -> {new_job_id}")
+    print(f"  Features: {features_dict}")
+    
+    async def run_update():
+        try:
+            theme = load_theme(cache['theme_name'])
+            fonts = load_fonts()
+            output_path = previews_path / filename
+            
+            def progress_callback(step_name, step_num, total, percent=0):
+                jobs[new_job_id].update({
+                    "step": step_num,
+                    "total": total,
+                    "message": step_name,
+                    "status": "running",
+                    "percent": percent
+                })
+            
+            loop = asyncio.get_event_loop()
+            updated_cache = await loop.run_in_executor(
+                executor,
+                lambda: render_with_cached_data(
+                    city=cache['city'],
+                    country=cache['country'],
+                    point=cache['point'],
+                    dist=cache['dist'],
+                    output_file=str(output_path),
+                    width=cache['width'],
+                    height=cache['height'],
+                    theme=theme,
+                    fonts=fonts,
+                    dpi=72,
+                    progress_callback=progress_callback,
+                    features=features_dict,
+                    cached_graph_drive=cache.get('graph_drive'),
+                    cached_graph_all=cache.get('graph_all'),
+                    cached_water=cache.get('water'),
+                    cached_parks=cache.get('parks'),
+                )
+            )
+            
+            # Update session cache with any newly fetched data (e.g., graph_all)
+            if updated_cache.get('graph_all') and not cache.get('graph_all'):
+                cache['graph_all'] = updated_cache['graph_all']
+                print(f"  Cached graph_all for job {original_job_id}")
+            
+            gc.collect()
+            
+            jobs[new_job_id].update({
+                "step": 3,
+                "total": 3,
+                "status": "complete",
+                "message": "Done!",
+                "percent": 100,
+                "preview_url": f"/previews/{filename}",
+                "coords": list(cache['point']),
+                "features": features_dict,
+                "original_job_id": original_job_id,  # Link back to original cache
+            })
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            jobs[new_job_id].update({"status": "error", "error": str(e)})
+    
+    asyncio.create_task(run_update())
+    
+    return {"job_id": new_job_id, "status": "started", "original_job_id": original_job_id}
 
 
 @app.post("/api/generate/start")

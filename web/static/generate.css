@@ -988,6 +988,15 @@
     color: #22c55e;
 }
 
+.toast-info .toast-content {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, var(--bg-secondary), rgba(59, 130, 246, 0.1));
+}
+
+.toast-info .toast-icon {
+    color: #3b82f6;
+}
+
 .toast-message {
     flex: 1;
     font-size: 0.9375rem;

@@ -78,20 +78,27 @@ function showToast(message, type = 'error') {
     
     const toast = document.createElement('div');
     toast.className = `toast-notification toast-${type}`;
+    
+    // Icons for different toast types
+    const icons = {
+        error: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 8v4M12 16h.01"/>
+                </svg>`,
+        success: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>`,
+        info: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>`
+    };
+    
     toast.innerHTML = `
         <div class="toast-content">
             <div class="toast-icon">
-                ${type === 'error' ? `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 8v4M12 16h.01"/>
-                    </svg>
-                ` : `
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                        <polyline points="22 4 12 14.01 9 11.01"/>
-                    </svg>
-                `}
+                ${icons[type] || icons.info}
             </div>
             <div class="toast-message">${message}</div>
             <button class="toast-close" onclick="this.parentElement.parentElement.remove()">
@@ -565,9 +572,10 @@ async function handleGenerate() {
             if (progress.status === 'complete') {
                 complete = true;
                 
-                // Add to previews
+                // Add to previews - originalJobId is used for fast feature updates
                 const preview = {
                     id: jobId,
+                    originalJobId: jobId,  // This job's data is cached for fast updates
                     url: progress.preview_url,
                     settings: settings,
                     timestamp: Date.now()
@@ -713,27 +721,104 @@ function showPreview(preview) {
     renderMiniPreviews();
 }
 
-// Handle regeneration with new features
+// Handle regeneration with new features - uses fast update endpoint
 async function handleRegenerate() {
     const preview = previews[currentPreviewIndex];
     if (!preview) return;
     
     const features = getSelectedFeatures();
+    const originalJobId = preview.originalJobId || preview.id;
+    
+    console.log('Fast update with features:', features, 'original job:', originalJobId);
+    
+    // Show loading with shorter progress steps (fast update only has 3 steps)
+    showLoading();
+    generateBtn.classList.add('loading');
+    generateBtn.disabled = true;
+    updateProgress(0, 3, 'Updating preview...');
+    
+    try {
+        // Use the fast update endpoint
+        const startResponse = await fetch('/api/preview/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                job_id: originalJobId,
+                features: features
+            })
+        });
+        
+        const startResult = await startResponse.json();
+        
+        if (!startResponse.ok) {
+            // If session expired, fall back to full regeneration
+            if (startResponse.status === 404) {
+                console.log('Session expired, falling back to full regeneration');
+                showToast('Session expired, generating fresh preview...', 'info');
+                await handleRegenerateFull(preview, features);
+                return;
+            }
+            throw new Error(startResult.detail || 'Failed to update preview');
+        }
+        
+        const jobId = startResult.job_id;
+        const linkedOriginalJobId = startResult.original_job_id || originalJobId;
+        
+        // Poll for progress (faster - only 3 steps)
+        let complete = false;
+        while (!complete) {
+            await new Promise(r => setTimeout(r, 150));
+            
+            const progressResponse = await fetch(`/api/progress/${jobId}`);
+            const progress = await progressResponse.json();
+            
+            updateProgress(progress.step, progress.total || 3, progress.message, progress.percent);
+            
+            if (progress.status === 'complete') {
+                complete = true;
+                
+                // Update current preview in place, keeping link to original cache
+                const settings = {
+                    ...preview.settings,
+                    features: features
+                };
+                
+                previews[currentPreviewIndex] = {
+                    id: jobId,
+                    originalJobId: linkedOriginalJobId,  // Keep link to cached data
+                    url: progress.preview_url,
+                    settings: settings,
+                    timestamp: Date.now()
+                };
+                
+                // Show updated preview
+                hideLoading();
+                showPreview(previews[currentPreviewIndex]);
+                showToast('Preview updated!', 'success');
+                
+            } else if (progress.status === 'error') {
+                throw new Error(progress.error || 'Preview update failed');
+            }
+        }
+        
+    } catch (error) {
+        console.error('Fast update error:', error);
+        showToast(error.message || 'An unexpected error occurred');
+        hideLoading();
+    } finally {
+        generateBtn.classList.remove('loading');
+        generateBtn.disabled = false;
+    }
+}
+
+// Fallback: full regeneration when session cache is expired
+async function handleRegenerateFull(preview, features) {
     const settings = {
         ...preview.settings,
         features: features
     };
     
-    console.log('Regenerating with features:', features);
-    
-    // Show loading
-    showLoading();
-    generateBtn.classList.add('loading');
-    generateBtn.disabled = true;
-    updateProgress(0, 6, 'Updating preview...');
-    
     try {
-        // Start the job
         const startResponse = await fetch('/api/preview/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -748,7 +833,6 @@ async function handleRegenerate() {
         
         const jobId = startResult.job_id;
         
-        // Poll for progress
         let complete = false;
         while (!complete) {
             await new Promise(r => setTimeout(r, 200));
@@ -761,15 +845,14 @@ async function handleRegenerate() {
             if (progress.status === 'complete') {
                 complete = true;
                 
-                // Update current preview in place
                 previews[currentPreviewIndex] = {
                     id: jobId,
+                    originalJobId: jobId,  // This is now the new cache source
                     url: progress.preview_url,
                     settings: settings,
                     timestamp: Date.now()
                 };
                 
-                // Show updated preview
                 hideLoading();
                 showPreview(previews[currentPreviewIndex]);
                 showToast('Preview updated!', 'success');
@@ -780,7 +863,7 @@ async function handleRegenerate() {
         }
         
     } catch (error) {
-        console.error('Regenerate error:', error);
+        console.error('Full regenerate error:', error);
         showToast(error.message || 'An unexpected error occurred');
         hideLoading();
     } finally {
