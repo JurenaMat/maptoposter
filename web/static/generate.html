@@ -80,92 +80,10 @@
                     </div>
                 </div>
 
-                <!-- Map Radius -->
-                <div class="config-card">
-                    <div class="config-card-header">
-                        <span class="config-num">3</span>
-                        <h2>Map Radius</h2>
-                    </div>
-                    <p class="config-subtitle">How much of the city do you want to capture?</p>
-                    <div class="radius-gallery-images" id="radiusGallery">
-                        <div class="radius-image-option" data-value="3000">
-                            <div class="radius-image-preview">
-                                <img src="/static/examples/radius_3km.webp" alt="3km radius" loading="lazy">
-                            </div>
-                            <div class="radius-image-info">
-                                <span class="radius-label">3 km</span>
-                                <span class="radius-desc">Neighborhood</span>
-                            </div>
-                            <div class="radius-check">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="radius-image-option selected" data-value="5000">
-                            <div class="radius-image-preview">
-                                <img src="/static/examples/radius_5km.webp" alt="5km radius" loading="lazy">
-                            </div>
-                            <div class="radius-image-info">
-                                <span class="radius-label">5 km</span>
-                                <span class="radius-desc">City center</span>
-                            </div>
-                            <div class="radius-check">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="radius-image-option" data-value="10000">
-                            <div class="radius-image-preview">
-                                <img src="/static/examples/radius_10km.webp" alt="10km radius" loading="lazy">
-                            </div>
-                            <div class="radius-image-info">
-                                <span class="radius-label">10 km</span>
-                                <span class="radius-desc">Downtown</span>
-                            </div>
-                            <div class="radius-check">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="radius-image-option" data-value="15000">
-                            <div class="radius-image-preview">
-                                <img src="/static/examples/radius_15km.webp" alt="15km radius" loading="lazy">
-                            </div>
-                            <div class="radius-image-info">
-                                <span class="radius-label">15 km</span>
-                                <span class="radius-desc">Metro area</span>
-                            </div>
-                            <div class="radius-check">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                            </div>
-                        </div>
-                        <div class="radius-image-option" data-value="20000">
-                            <div class="radius-image-preview">
-                                <img src="/static/examples/radius_20km.webp" alt="20km radius" loading="lazy">
-                            </div>
-                            <div class="radius-image-info">
-                                <span class="radius-label">20 km</span>
-                                <span class="radius-desc">Full city</span>
-                            </div>
-                            <div class="radius-check">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                                    <polyline points="20 6 9 17 4 12"/>
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                    <input type="hidden" id="distanceSelect" value="5000">
-                </div>
-
                 <!-- Poster Size -->
                 <div class="config-card">
                     <div class="config-card-header">
-                        <span class="config-num">4</span>
+                        <span class="config-num">3</span>
                         <h2>Poster Size</h2>
                     </div>
                     <p class="config-subtitle">Choose a print-ready size</p>
@@ -237,54 +155,137 @@
                 <div class="preview-sidebar">
                     <div class="preview-info">
                         <h2 id="previewCity">City Name</h2>
-                        <p id="previewMeta">Theme • 10km • 12×16"</p>
+                        <p id="previewMeta">Theme • 10km • 30×40cm</p>
                     </div>
 
-                    <!-- Customize Features - Variant Switching -->
-                    <div class="customize-panel">
-                        <h3>Customize Map</h3>
-                        <p class="customize-hint">Toggle features instantly</p>
-                        
-                        <!-- Water & Parks Toggle -->
-                        <div class="feature-toggles">
+                    <!-- Map Radius -->
+                    <div class="customize-panel radius-panel">
+                        <h3>Map Size</h3>
+                        <div class="radius-selector" id="radiusSelector">
+                            <div class="radius-option" data-value="5000">
+                                <div class="radius-option-indicator">
+                                    <svg class="radius-check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                    <svg class="radius-loading-icon" width="14" height="14" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                                    </svg>
+                                </div>
+                                <div class="radius-option-content">
+                                    <span class="radius-option-label">5 km</span>
+                                    <span class="radius-option-status">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="radius-option selected" data-value="10000">
+                                <div class="radius-option-indicator">
+                                    <svg class="radius-check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                    <svg class="radius-loading-icon" width="14" height="14" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                                    </svg>
+                                </div>
+                                <div class="radius-option-content">
+                                    <span class="radius-option-label">10 km</span>
+                                    <span class="radius-option-status">Ready</span>
+                                </div>
+                            </div>
+                            <div class="radius-option locked" data-value="15000" data-status="locked">
+                                <div class="radius-option-indicator">
+                                    <svg class="radius-locked-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                    </svg>
+                                </div>
+                                <div class="radius-option-content">
+                                    <span class="radius-option-label">15 km</span>
+                                    <span class="radius-option-status">Sign up</span>
+                                </div>
+                            </div>
+                            <div class="radius-option locked" data-value="20000" data-status="locked">
+                                <div class="radius-option-indicator">
+                                    <svg class="radius-locked-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                    </svg>
+                                </div>
+                                <div class="radius-option-content">
+                                    <span class="radius-option-label">20 km</span>
+                                    <span class="radius-option-status">Sign up</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Theme Switcher -->
+                    <div class="customize-panel theme-panel">
+                        <h3>Theme</h3>
+                        <div class="theme-switcher" id="themeSwitcher">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Feature Toggles -->
+                    <div class="customize-panel features-panel">
+                        <h3>Map Layers</h3>
+                        <div class="feature-toggles" id="featureToggles">
                             <label class="feature-toggle">
-                                <input type="checkbox" id="toggleWaterParks" checked>
+                                <input type="checkbox" id="toggleParks" checked>
                                 <span class="feature-toggle-box">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                                         <polyline points="20 6 9 17 4 12"/>
                                     </svg>
                                 </span>
                                 <span class="feature-toggle-label">
-                                    <span class="feature-name">Water & Parks</span>
-                                    <span class="feature-desc" id="waterParksStatus">Ready ✓</span>
+                                    <span class="feature-name">Parks</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="toggleWater" checked>
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Water & Rivers</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="toggleRoadsDrive" checked>
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Roads</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="toggleRoadsPaths" checked>
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Walking Paths</span>
+                                </span>
+                            </label>
+                            <label class="feature-toggle">
+                                <input type="checkbox" id="toggleRoadsCycling" checked>
+                                <span class="feature-toggle-box">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </span>
+                                <span class="feature-toggle-label">
+                                    <span class="feature-name">Cycling Paths</span>
                                 </span>
                             </label>
                         </div>
-                        
-                        <!-- Street Type Radio -->
-                        <div class="street-type-selector">
-                            <p class="street-type-label">Street Detail</p>
-                            <div class="street-type-options">
-                                <label class="street-radio">
-                                    <input type="radio" name="streetType" value="simple" checked>
-                                    <span class="street-radio-box"></span>
-                                    <span class="street-radio-label">
-                                        <span class="street-radio-name">Simple</span>
-                                        <span class="street-radio-desc">Main roads only</span>
-                                    </span>
-                                </label>
-                                <label class="street-radio">
-                                    <input type="radio" name="streetType" value="all">
-                                    <span class="street-radio-box"></span>
-                                    <span class="street-radio-label">
-                                        <span class="street-radio-name">All Streets</span>
-                                        <span class="street-radio-desc" id="allStreetsStatus">Loading...</span>
-                                    </span>
-                                </label>
-                            </div>
-                        </div>
-                        
-                        <p class="customize-note">Variants render in background</p>
+                        <p class="customize-note">Changes re-render preview (~2s)</p>
                     </div>
 
                     <div class="preview-actions-main">
@@ -327,17 +328,40 @@
 
         <!-- Loading Overlay -->
         <div class="loading-overlay" id="loadingOverlay">
-            <div class="loading-card">
-                <div class="progress-ring">
-                    <svg viewBox="0 0 100 100">
-                        <circle class="progress-ring-bg" cx="50" cy="50" r="45"/>
-                        <circle class="progress-ring-fill" id="progressRing" cx="50" cy="50" r="45"/>
-                    </svg>
-                    <span class="progress-percent" id="progressPercent">0%</span>
+            <div class="loading-card loading-card-fancy">
+                <div class="loading-stage-visual">
+                    <div class="loading-image-stack">
+                        <img class="loading-stage-img" id="loadingStageImg" src="" alt="">
+                        <div class="loading-stage-glow"></div>
+                    </div>
+                    <div class="loading-stage-badge" id="loadingStageBadge">
+                        <span class="stage-emoji" id="stageEmoji">🗺️</span>
+                    </div>
                 </div>
-                <p class="progress-status" id="progressStatus">Starting...</p>
-                <p class="progress-hint">Typically takes less than 15 seconds</p>
+                <div class="loading-info">
+                    <div class="progress-ring">
+                        <svg viewBox="0 0 100 100">
+                            <circle class="progress-ring-bg" cx="50" cy="50" r="45"/>
+                            <circle class="progress-ring-fill" id="progressRing" cx="50" cy="50" r="45"/>
+                        </svg>
+                        <span class="progress-percent" id="progressPercent">0%</span>
+                    </div>
+                    <div class="loading-text-group">
+                        <p class="progress-status" id="progressStatus">Starting...</p>
+                        <p class="progress-fun" id="progressFun">Warming up the cartographer...</p>
+                    </div>
+                </div>
                 <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Mini Loading for Theme/Feature Changes -->
+        <div class="preview-loading-overlay" id="previewLoadingOverlay">
+            <div class="preview-loading-content">
+                <svg class="preview-loading-spinner" viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray="31.4 31.4" stroke-linecap="round"/>
+                </svg>
+                <span class="preview-loading-text" id="previewLoadingText">Applying changes...</span>
             </div>
         </div>
     </main>

@@ -1,19 +1,19 @@
 /**
  * MapToPoster Generate Page
- * MVP v1.6 - 2026-02-02
+ * MVP v1.7 - 2026-02-02
  * 
- * INSTANT VARIANT SWITCHING
- * - Water & Parks toggle
- * - Simple vs All Streets radio
- * - Variants render in background, switch instantly
+ * PROGRESSIVE RADIUS LOADING
+ * - Fast 5km preview first
+ * - Background loading of 10km, 15km, 20km
+ * - Radius selector with loading states
  */
 
 // State
 let selectedCity = null;
 let selectedCountry = null;
 let selectedTheme = 'noir';
-let selectedDistance = 5000;
-let selectedSize = '50x70';
+let selectedDistance = 5000;  // Default initial radius
+let selectedSize = '30x40';
 let debounceTimer = null;
 let themes = [];
 
@@ -23,6 +23,24 @@ let previews = [];
 let currentPreviewIndex = 0;
 let currentJobId = null;
 let variantPollingInterval = null;
+let radiusPollingInterval = null;
+
+// Radius state - tracks loading progress
+let radiusStatus = {
+    5000: 'pending',
+    10000: 'pending',
+    15000: 'locked',  // Requires signup
+    20000: 'locked'   // Requires signup
+};
+
+// Feature state
+let featureState = {
+    parks: true,
+    water: true,
+    roads_drive: true,
+    roads_paths: true,
+    roads_cycling: true
+};
 
 // Variant state - tracks available variants
 let variants = {
@@ -31,6 +49,103 @@ let variants = {
     all_with_wp: null,
     all_no_wp: null
 };
+
+// Loading showcase - images rotate independently on a timer
+const LOADING_SHOWCASE = [
+    { image: '/static/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
+    { image: '/static/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
+    { image: '/static/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
+    { image: '/static/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
+    { image: '/static/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
+    { image: '/static/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
+];
+
+// Fun loading messages grouped by stage
+const LOADING_MESSAGES = {
+    location: [
+        "Asking GPS satellites nicely...",
+        "Finding your spot on Earth...",
+        "Consulting ancient cartographers...",
+        "Locating you in the universe...",
+    ],
+    streets: [
+        "Downloading every street corner...",
+        "Mapping out secret shortcuts...",
+        "Interviewing local taxi drivers...",
+        "Tracing delivery routes...",
+        "Paving digital highways...",
+    ],
+    water: [
+        "Making the rivers flow...",
+        "Teaching water where to go...",
+        "Consulting with local ducks...",
+    ],
+    parks: [
+        "Planting digital trees...",
+        "Finding where dogs get walked...",
+        "Growing a tiny urban forest...",
+    ],
+    render: [
+        "Mixing the perfect palette...",
+        "Teaching robots to be artists...",
+        "Making it poster-worthy...",
+        "Adding that gallery finish...",
+        "Almost frame-ready...",
+    ]
+};
+
+let currentShowcaseIndex = 0;
+let showcaseInterval = null;
+
+function getRandomMessage(stage) {
+    const messages = LOADING_MESSAGES[stage] || LOADING_MESSAGES.render;
+    return messages[Math.floor(Math.random() * messages.length)];
+}
+
+function getCurrentShowcase() {
+    return LOADING_SHOWCASE[currentShowcaseIndex];
+}
+
+function advanceShowcase() {
+    currentShowcaseIndex = (currentShowcaseIndex + 1) % LOADING_SHOWCASE.length;
+    updateShowcaseVisual();
+}
+
+function updateShowcaseVisual() {
+    const showcase = getCurrentShowcase();
+    const imgEl = document.getElementById('loadingStageImg');
+    const emojiEl = document.getElementById('stageEmoji');
+    
+    if (emojiEl) {
+        emojiEl.style.transform = 'scale(0) rotate(-180deg)';
+        setTimeout(() => {
+            emojiEl.textContent = showcase.emoji;
+            emojiEl.style.transform = 'scale(1) rotate(0deg)';
+        }, 200);
+    }
+    
+    if (imgEl) {
+        imgEl.classList.remove('visible');
+        setTimeout(() => {
+            imgEl.src = showcase.image;
+            imgEl.onload = () => imgEl.classList.add('visible');
+        }, 250);
+    }
+}
+
+function startShowcaseRotation() {
+    currentShowcaseIndex = 0;
+    updateShowcaseVisual();
+    // Rotate every 3 seconds
+    showcaseInterval = setInterval(advanceShowcase, 3000);
+}
+
+function stopShowcaseRotation() {
+    if (showcaseInterval) {
+        clearInterval(showcaseInterval);
+        showcaseInterval = null;
+    }
+}
 
 // DOM Elements
 const cityInput = document.getElementById('cityInput');
@@ -108,9 +223,9 @@ function showToast(message, type = 'error') {
 document.addEventListener('DOMContentLoaded', () => {
     loadThemes();
     setupEventListeners();
-    setupRadiusGallery();
     setupSizeGallery();
-    setupVariantToggles();
+    setupRadiusSelector();
+    setupFeatureToggles();
     
     const params = new URLSearchParams(window.location.search);
     if (params.get('city') && params.get('country')) {
@@ -168,88 +283,358 @@ function renderThemeGallery() {
     });
 }
 
-// ============================================
-// Variant Toggles - Water&Parks + StreetType
-// ============================================
-
-function setupVariantToggles() {
-    const waterParksToggle = document.getElementById('toggleWaterParks');
-    const streetRadios = document.querySelectorAll('input[name="streetType"]');
+function renderThemeSwitcher() {
+    const switcher = document.getElementById('themeSwitcher');
+    if (!switcher) return;
     
-    if (waterParksToggle) {
-        waterParksToggle.addEventListener('change', updateCurrentVariant);
-    }
+    switcher.innerHTML = themes.map(theme => `
+        <div class="theme-swatch ${theme.name === selectedTheme ? 'selected' : ''}" 
+             data-theme="${theme.name}" 
+             title="${theme.display_name}">
+            <div class="theme-swatch-bg" style="background: ${theme.bg}"></div>
+            <div class="theme-swatch-roads">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M2 12 Q6 10 12 12 T22 12" stroke="${theme.text}" stroke-width="2" opacity="0.8"/>
+                    <path d="M4 6 Q8 8 14 6" stroke="${theme.text}" stroke-width="1.5" opacity="0.5"/>
+                    <path d="M2 18 Q10 16 22 18" stroke="${theme.text}" stroke-width="1.5" opacity="0.5"/>
+                </svg>
+            </div>
+            <div class="theme-swatch-check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            </div>
+        </div>
+    `).join('');
     
-    streetRadios.forEach(radio => {
-        radio.addEventListener('change', updateCurrentVariant);
+    switcher.querySelectorAll('.theme-swatch').forEach(swatch => {
+        swatch.addEventListener('click', () => handleThemeSwitch(swatch.dataset.theme));
     });
 }
 
-function updateCurrentVariant() {
-    const waterParksToggle = document.getElementById('toggleWaterParks');
-    const streetType = document.querySelector('input[name="streetType"]:checked')?.value || 'simple';
+async function handleThemeSwitch(themeName) {
+    if (!currentJobId || themeName === selectedTheme) return;
     
-    const withWaterParks = waterParksToggle?.checked ?? true;
+    const switcher = document.getElementById('themeSwitcher');
     
-    // Determine which variant to show
-    let variantKey;
-    if (streetType === 'simple') {
-        variantKey = withWaterParks ? 'drive_with_wp' : 'drive_no_wp';
+    // Update UI immediately
+    switcher.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('selected'));
+    switcher.querySelector(`[data-theme="${themeName}"]`)?.classList.add('selected');
+    
+    // Show loading overlay with theme name
+    const themeInfo = themes.find(t => t.name === themeName);
+    showPreviewLoading(`Painting with ${themeInfo?.display_name || themeName}...`);
+    
+    try {
+        const response = await fetch(`/api/preview/theme/${currentJobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: themeName })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.detail || 'Failed to switch theme');
+        }
+        
+        selectedTheme = themeName;
+        
+        // Update preview image
+        const previewImage = document.getElementById('previewImage');
+        if (previewImage && result.preview_url) {
+            previewImage.src = result.preview_url + '?t=' + Date.now();
+            previewImage.onload = () => hidePreviewLoading();
     } else {
-        variantKey = withWaterParks ? 'all_with_wp' : 'all_no_wp';
+            hidePreviewLoading();
+        }
+        
+        // Update step 1 theme gallery too
+        themeGallery.querySelectorAll('.theme-card').forEach(c => {
+            c.classList.toggle('selected', c.dataset.theme === themeName);
+        });
+        
+        updatePreviewMeta();
+        
+    } catch (error) {
+        console.error('Theme switch error:', error);
+        showToast(error.message || 'Failed to switch theme', 'error');
+        hidePreviewLoading();
+        
+        // Revert UI
+        switcher.querySelectorAll('.theme-swatch').forEach(s => {
+            s.classList.toggle('selected', s.dataset.theme === selectedTheme);
+        });
     }
+}
+
+// ============================================
+// Feature Toggles
+// ============================================
+
+function setupFeatureToggles() {
+    const toggles = {
+        toggleParks: 'parks',
+        toggleWater: 'water',
+        toggleRoadsDrive: 'roads_drive',
+        toggleRoadsPaths: 'roads_paths',
+        toggleRoadsCycling: 'roads_cycling'
+    };
     
-    const variantUrl = variants[variantKey];
-    const previewImage = document.getElementById('previewImage');
-    
-    if (variantUrl && previewImage) {
-        previewImage.classList.add('loading');
-        previewImage.src = variantUrl + '?t=' + Date.now();
-        previewImage.onload = () => previewImage.classList.remove('loading');
-    } else if (!variantUrl && previewImage) {
-        // Variant not ready yet, show message
-        const statusEl = document.getElementById('allStreetsStatus');
-        if (streetType === 'all' && statusEl) {
-            statusEl.textContent = 'Loading...';
+    for (const [elementId, featureKey] of Object.entries(toggles)) {
+        const toggle = document.getElementById(elementId);
+        if (toggle) {
+            toggle.addEventListener('change', () => handleFeatureToggle(featureKey, toggle.checked));
         }
     }
 }
 
-function updateVariantStatus() {
-    const allStreetsStatus = document.getElementById('allStreetsStatus');
-    const allStreetsRadio = document.querySelector('input[name="streetType"][value="all"]');
-    
-    const allReady = variants.all_with_wp && variants.all_no_wp;
-    
-    if (allStreetsStatus) {
-        allStreetsStatus.textContent = allReady ? 'Paths & cycleways' : 'Loading...';
+let featureToggleDebounce = null;
+
+// Fun loading messages for features
+const FEATURE_LOADING_MESSAGES = {
+    parks: ['🌳 Planting trees...', '🌲 Growing the forest...', '🌿 Adding some greenery...'],
+    water: ['💧 Filling rivers...', '🌊 Adding the blue stuff...', '🏊 Making it swimable...'],
+    roads_drive: ['🚗 Paving highways...', '🛣️ Drawing roads...', '🚙 Mapping drives...'],
+    roads_paths: ['🚶 Charting footpaths...', '🛤️ Tracing trails...', '👟 Finding shortcuts...'],
+    roads_cycling: ['🚴 Adding bike lanes...', '🚲 Mapping cycle routes...', '🛴 Going green...']
+};
+
+function getFeatureLoadingMessage(featureKey, adding) {
+    const action = adding ? 'Adding' : 'Removing';
+    const messages = FEATURE_LOADING_MESSAGES[featureKey] || ['Updating map...'];
+    if (adding) {
+        return messages[Math.floor(Math.random() * messages.length)];
     }
+    const featureNames = {
+        parks: 'parks',
+        water: 'water',
+        roads_drive: 'main roads',
+        roads_paths: 'footpaths',
+        roads_cycling: 'bike lanes'
+    };
+    return `${action} ${featureNames[featureKey] || 'layer'}...`;
+}
+
+async function handleFeatureToggle(featureKey, value) {
+    if (!currentJobId) return;
     
-    if (allStreetsRadio) {
-        allStreetsRadio.disabled = !allReady;
+    // Update local state
+    featureState[featureKey] = value;
+    
+    // Debounce to batch multiple changes
+    if (featureToggleDebounce) clearTimeout(featureToggleDebounce);
+    
+    featureToggleDebounce = setTimeout(async () => {
+        // Show loading overlay
+        showPreviewLoading(getFeatureLoadingMessage(featureKey, value));
+        
+        console.log('Toggling features:', featureState);
+        
+        try {
+            const response = await fetch(`/api/preview/features/${currentJobId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(featureState)
+            });
+            
+            const result = await response.json();
+            console.log('Feature toggle response:', result);
+            
+            if (!response.ok) {
+                throw new Error(result.detail || 'Failed to update features');
+            }
+            
+            // Update preview image
+            const previewImage = document.getElementById('previewImage');
+            if (previewImage && result.preview_url) {
+                previewImage.src = result.preview_url + '?t=' + Date.now();
+                previewImage.onload = () => hidePreviewLoading();
+            } else {
+                hidePreviewLoading();
+            }
+            
+        } catch (error) {
+            console.error('Feature toggle error:', error);
+            showToast(error.message || 'Failed to update features', 'error');
+            hidePreviewLoading();
+        }
+    }, 300);
+}
+
+function resetFeatureToggles() {
+    featureState = {
+        parks: true,
+        water: true,
+        roads_drive: true,
+        roads_paths: true,
+        roads_cycling: true
+    };
+    
+    const toggles = {
+        toggleParks: 'parks',
+        toggleWater: 'water',
+        toggleRoadsDrive: 'roads_drive',
+        toggleRoadsPaths: 'roads_paths',
+        toggleRoadsCycling: 'roads_cycling'
+    };
+    
+    for (const [elementId, featureKey] of Object.entries(toggles)) {
+        const toggle = document.getElementById(elementId);
+        if (toggle) toggle.checked = featureState[featureKey];
     }
 }
 
+// Legacy - keep for compatibility
+function updateVariantStatus() {}
+
 // ============================================
-// Radius & Size Galleries
+// Progressive Radius Selector (Step 2)
 // ============================================
 
-function setupRadiusGallery() {
-    const radiusGallery = document.getElementById('radiusGallery');
-    if (!radiusGallery) return;
+function setupRadiusSelector() {
+    const radiusSelector = document.getElementById('radiusSelector');
+    if (!radiusSelector) return;
     
-    radiusGallery.addEventListener('click', (e) => {
-        const option = e.target.closest('.radius-image-option');
+    radiusSelector.addEventListener('click', async (e) => {
+        const option = e.target.closest('.radius-option');
         if (!option) return;
         
-        radiusGallery.querySelectorAll('.radius-image-option').forEach(o => o.classList.remove('selected'));
-        option.classList.add('selected');
-        selectedDistance = parseInt(option.dataset.value, 10);
+        const radius = parseInt(option.dataset.value, 10);
+        const status = option.dataset.status;
+        
+        // Check if locked (requires signup)
+        if (status === 'locked') {
+            // TODO: Implement signup modal
+            showToast('Sign up to unlock larger map sizes!', 'info');
+            return;
+        }
+        
+        // Only allow clicking ready radiuses
+        if (status !== 'ready') {
+            if (status === 'loading') {
+                showToast('This radius is still loading...', 'info');
+            } else {
+                showToast('This radius is not available yet', 'info');
+            }
+            return;
+        }
+        
+        // Switch radius
+        await switchRadius(radius);
     });
-    
-    const defaultOption = radiusGallery.querySelector('[data-value="5000"]');
-    if (defaultOption) defaultOption.classList.add('selected');
 }
+
+async function switchRadius(radius) {
+    if (!currentJobId) return;
+    
+    // Show loading overlay
+    showPreviewLoading(`Resizing to ${radius / 1000}km view...`);
+    
+    try {
+        const response = await fetch(`/api/preview/radius/${currentJobId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ radius })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.detail || 'Failed to switch radius');
+        }
+        
+        // Update UI
+        selectedDistance = radius;
+        
+        // Update selection in radius selector
+        const selector = document.getElementById('radiusSelector');
+        selector.querySelectorAll('.radius-option').forEach(opt => {
+            opt.classList.remove('selected');
+            if (parseInt(opt.dataset.value, 10) === radius) {
+                opt.classList.add('selected');
+            }
+        });
+        
+        // Update preview image
+        const previewImage = document.getElementById('previewImage');
+        if (previewImage && result.preview_url) {
+            previewImage.src = result.preview_url + '?t=' + Date.now();
+            previewImage.onload = () => hidePreviewLoading();
+        } else {
+            hidePreviewLoading();
+        }
+        
+        // Update meta text
+        updatePreviewMeta();
+        
+    } catch (error) {
+        console.error('Radius switch error:', error);
+        showToast(error.message || 'Failed to switch radius', 'error');
+        hidePreviewLoading();
+    }
+}
+
+function updateRadiusSelectorUI(radiusData) {
+    const selector = document.getElementById('radiusSelector');
+    if (!selector) return;
+    
+    for (const [radiusStr, data] of Object.entries(radiusData)) {
+        const radius = parseInt(radiusStr, 10);
+        const option = selector.querySelector(`[data-value="${radius}"]`);
+        if (!option) continue;
+        
+        const status = data.status;
+        const statusEl = option.querySelector('.radius-option-status');
+        
+        // Update data attribute for CSS
+        option.dataset.status = status;
+        
+        // Update status text
+        if (statusEl) {
+            switch (status) {
+                case 'ready':
+                    statusEl.textContent = 'Ready';
+                    break;
+                case 'loading':
+                    statusEl.textContent = 'Loading...';
+                    break;
+                case 'pending':
+                    statusEl.textContent = 'Locked';
+                    break;
+                case 'error':
+                    statusEl.textContent = 'Failed';
+                    break;
+            }
+        }
+        
+        // Update classes
+        option.classList.remove('loading', 'locked');
+        if (status === 'loading') {
+            option.classList.add('loading');
+        } else if (status === 'pending') {
+            option.classList.add('locked');
+        }
+        
+        // Store in state
+        radiusStatus[radius] = status;
+    }
+}
+
+function updatePreviewMeta() {
+    const previewMeta = document.getElementById('previewMeta');
+    if (!previewMeta || !currentPreview) return;
+    
+    const settings = currentPreview.settings;
+    const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+    const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
+    
+    previewMeta.textContent = `${themeName} • ${selectedDistance / 1000}km • ${sizeLabel}`;
+}
+
+// ============================================
+// Size Gallery
+// ============================================
 
 function setupSizeGallery() {
     const sizeGallery = document.getElementById('sizeGallery');
@@ -264,13 +649,13 @@ function setupSizeGallery() {
         selectedSize = option.dataset.value;
     });
     
-    const defaultOption = sizeGallery.querySelector('[data-value="50x70"]');
+    const defaultOption = sizeGallery.querySelector('[data-value="30x40"]');
     if (defaultOption) defaultOption.classList.add('selected');
 }
 
 function getCurrentDistance() {
-    const selected = document.querySelector('#radiusGallery .radius-image-option.selected');
-    return selected ? parseInt(selected.dataset.value, 10) : selectedDistance;
+    // With progressive loading, always start with 5km
+    return selectedDistance;
 }
 
 function getCurrentSize() {
@@ -403,6 +788,7 @@ function goToStep1() {
     step2.dataset.active = 'false';
     updateStepIndicators(1);
     stopVariantPolling();
+    stopRadiusPolling();
 }
 
 function goToStep2() {
@@ -425,13 +811,17 @@ function resetAll() {
     selectedCity = null;
     selectedCountry = null;
     selectedTheme = 'noir';
-    selectedDistance = 5000;
-    selectedSize = '50x70';
+    selectedDistance = 10000;  // Default 10km
+    selectedSize = '30x40';
     currentPreview = null;
     previews = [];
     currentPreviewIndex = 0;
-    variants = { drive_with_wp: null, drive_no_wp: null, all_with_wp: null, all_no_wp: null };
+    currentJobId = null;
+    variants = {};
+    radiusStatus = { 5000: 'pending', 10000: 'pending', 15000: 'locked', 20000: 'locked' };
+    featureState = { parks: true, water: true, roads_drive: true, roads_paths: true, roads_cycling: true };
     stopVariantPolling();
+    stopRadiusPolling();
     renderThemeGallery();
     goToStep1();
 }
@@ -453,7 +843,6 @@ async function handleGenerate() {
         }
     }
     
-    const currentDistance = getCurrentDistance();
     const currentSize = getCurrentSize();
     const [widthCm, heightCm] = currentSize.split('x').map(Number);
     const width = cmToInches(widthCm);
@@ -462,27 +851,25 @@ async function handleGenerate() {
     const selectedThemeCard = themeGallery.querySelector('.theme-card.selected');
     const currentTheme = selectedThemeCard ? selectedThemeCard.dataset.theme : selectedTheme;
     
+    // Start with 10km (default) with all features
     const settings = {
         city: selectedCity,
         country: selectedCountry,
         theme: currentTheme,
-        distance: currentDistance,
+        distance: 10000,  // Default 10km
         width: width,
         height: height,
-        features: { water: true, parks: true, paths: false }
+        features: { water: true, parks: true, paths: true }
     };
     
-    console.log('Generating with settings:', settings);
+    console.log('Generating preview:', settings);
     
-    // Reset variants
-    variants = { drive_with_wp: null, drive_no_wp: null, all_with_wp: null, all_no_wp: null };
-    updateVariantStatus();
-    
-    // Reset toggles
-    const waterParksToggle = document.getElementById('toggleWaterParks');
-    const simpleRadio = document.querySelector('input[name="streetType"][value="simple"]');
-    if (waterParksToggle) waterParksToggle.checked = true;
-    if (simpleRadio) simpleRadio.checked = true;
+    // Reset states
+    selectedDistance = 10000;  // Default 10km
+    variants = {};
+    radiusStatus = { 5000: 'pending', 10000: 'pending', 15000: 'locked', 20000: 'locked' };
+    resetRadiusSelectorUI();
+    resetFeatureToggles();
     
     showLoading();
     generateBtn.classList.add('loading');
@@ -521,15 +908,14 @@ async function handleGenerate() {
             
             if (progress.status === 'complete') {
                 complete = true;
-                currentJobId = null;
+                // Keep currentJobId for radius polling!
                 
                 // Store variants
                 if (progress.variants) {
                     variants = progress.variants;
                 }
                 
-                // Main preview URL is drive_with_wp
-                const previewUrl = progress.preview_url || variants.drive_with_wp;
+                const previewUrl = progress.preview_url;
                 
                 currentPreview = {
                     id: jobId,
@@ -549,8 +935,8 @@ async function handleGenerate() {
                 showPreview(currentPreview);
                 goToStep2();
                 
-                // Start polling for variant availability
-                startVariantPolling(jobId);
+                // Start polling for radius availability (progressive loading)
+                startRadiusPolling(jobId);
                 
             } else if (progress.status === 'error') {
                 throw new Error(progress.error || 'Preview generation failed');
@@ -567,13 +953,41 @@ async function handleGenerate() {
     }
 }
 
+function resetRadiusSelectorUI() {
+    const selector = document.getElementById('radiusSelector');
+    if (!selector) return;
+    
+    selector.querySelectorAll('.radius-option').forEach((opt) => {
+        const radius = parseInt(opt.dataset.value, 10);
+        opt.classList.remove('selected', 'loading', 'locked');
+        
+        const statusEl = opt.querySelector('.radius-option-status');
+        
+        if (radius === 10000) {
+            // 10km is default, loading first
+            opt.classList.add('selected');
+            opt.dataset.status = 'loading';
+            if (statusEl) statusEl.textContent = 'Loading...';
+        } else if (radius === 5000) {
+            // 5km loads in background
+            opt.dataset.status = 'pending';
+            if (statusEl) statusEl.textContent = 'Loading...';
+        } else {
+            // 15km and 20km are locked
+            opt.classList.add('locked');
+            opt.dataset.status = 'locked';
+            if (statusEl) statusEl.textContent = 'Sign up';
+        }
+    });
+}
+
 function showPreview(preview) {
     const settings = preview.settings;
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
     const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
     
     previewCity.textContent = `${settings.city}, ${settings.country}`;
-    previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
+    previewMeta.textContent = `${themeName} • ${selectedDistance / 1000}km • ${sizeLabel}`;
     
     // Set preview image
     const previewImage = document.getElementById('previewImage');
@@ -586,7 +1000,9 @@ function showPreview(preview) {
         variants = { ...variants, ...preview.variants };
     }
     
-    updateVariantStatus();
+    // Render theme switcher in sidebar
+    renderThemeSwitcher();
+    
     renderPreviewsGrid();
 }
 
@@ -624,7 +1040,53 @@ function renderPreviewsGrid() {
 }
 
 // ============================================
-// Variant Polling
+// Radius Polling (Progressive Loading)
+// ============================================
+
+function startRadiusPolling(jobId) {
+    stopRadiusPolling();
+    
+    // Mark 10km as ready immediately (it was just completed)
+    updateRadiusSelectorUI({ 
+        '10000': { status: 'ready' },
+        '5000': { status: 'loading' },
+        '15000': { status: 'locked' },
+        '20000': { status: 'locked' }
+    });
+    
+    radiusPollingInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/radiuses/${jobId}`);
+            const data = await response.json();
+            
+            if (data.radiuses) {
+                updateRadiusSelectorUI(data.radiuses);
+                
+                // Check if all available radiuses are ready (5km and 10km)
+                const availableReady = 
+                    data.radiuses['5000']?.status === 'ready' && 
+                    data.radiuses['10000']?.status === 'ready';
+                
+                if (availableReady) {
+                    showToast('All map sizes ready!', 'success');
+                    stopRadiusPolling();
+                }
+            }
+        } catch (error) {
+            console.error('Radius polling error:', error);
+        }
+    }, 2000);
+}
+
+function stopRadiusPolling() {
+    if (radiusPollingInterval) {
+        clearInterval(radiusPollingInterval);
+        radiusPollingInterval = null;
+    }
+}
+
+// ============================================
+// Variant Polling (kept for water/parks toggle)
 // ============================================
 
 function startVariantPolling(jobId) {
@@ -723,16 +1185,44 @@ function showLoading() {
     loadingOverlay.classList.add('active');
     currentProgress = 0;
     targetProgress = 0;
+    currentLoadingStage = 'location';
     renderProgress(0, 'Starting...');
+    updateFunMessage('location');
+    startFunMessageRotation();
+    startShowcaseRotation();
 }
 
 function hideLoading() {
     loadingOverlay.classList.remove('active');
+    stopFunMessageRotation();
+    stopShowcaseRotation();
     if (progressAnimationFrame) {
         cancelAnimationFrame(progressAnimationFrame);
         progressAnimationFrame = null;
     }
 }
+
+// Preview loading overlay (for theme/feature changes)
+function showPreviewLoading(text = 'Applying changes...') {
+    const overlay = document.getElementById('previewLoadingOverlay');
+    const textEl = document.getElementById('previewLoadingText');
+    const previewImage = document.getElementById('previewImage');
+    
+    if (overlay) overlay.classList.add('active');
+    if (textEl) textEl.textContent = text;
+    if (previewImage) previewImage.classList.add('loading');
+}
+
+function hidePreviewLoading() {
+    const overlay = document.getElementById('previewLoadingOverlay');
+    const previewImage = document.getElementById('previewImage');
+    
+    if (overlay) overlay.classList.remove('active');
+    if (previewImage) previewImage.classList.remove('loading');
+}
+
+let currentLoadingStage = 'location';
+let funMessageInterval = null;
 
 function renderProgress(percent, message) {
     const circumference = 2 * Math.PI * 45;
@@ -741,6 +1231,52 @@ function renderProgress(percent, message) {
     if (progressRing) progressRing.style.strokeDashoffset = offset;
     if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
     if (progressStatus) progressStatus.textContent = message || 'Processing...';
+    
+    // Determine stage based on message
+    let stage = 'render';
+    if (message?.toLowerCase().includes('location') || message?.toLowerCase().includes('finding')) {
+        stage = 'location';
+    } else if (message?.toLowerCase().includes('street') || message?.toLowerCase().includes('road')) {
+        stage = 'streets';
+    } else if (message?.toLowerCase().includes('water')) {
+        stage = 'water';
+    } else if (message?.toLowerCase().includes('park')) {
+        stage = 'parks';
+    } else if (message?.toLowerCase().includes('compos') || message?.toLowerCase().includes('render')) {
+        stage = 'render';
+    }
+    
+    // Update fun message when stage changes
+    if (stage !== currentLoadingStage) {
+        currentLoadingStage = stage;
+        updateFunMessage(stage);
+    }
+}
+
+function updateFunMessage(stage) {
+    const funEl = document.getElementById('progressFun');
+    if (funEl) {
+        funEl.style.opacity = '0';
+        setTimeout(() => {
+            funEl.textContent = getRandomMessage(stage);
+            funEl.style.opacity = '1';
+        }, 200);
+    }
+}
+
+
+function startFunMessageRotation() {
+    // Rotate fun messages every 3 seconds
+    funMessageInterval = setInterval(() => {
+        updateFunMessage(currentLoadingStage);
+    }, 3500);
+}
+
+function stopFunMessageRotation() {
+    if (funMessageInterval) {
+        clearInterval(funMessageInterval);
+        funMessageInterval = null;
+    }
 }
 
 // ============================================
@@ -752,24 +1288,21 @@ async function handleGenerateFinal() {
     
     const settings = currentPreview.settings;
     
-    // Get toggle states
-    const waterParksToggle = document.getElementById('toggleWaterParks');
-    const streetType = document.querySelector('input[name="streetType"]:checked')?.value || 'simple';
-    
-    const withWaterParks = waterParksToggle?.checked ?? true;
-    const withPaths = streetType === 'all';
-    
+    // Use the current feature state from toggles
     const finalSettings = {
         ...settings,
+        distance: selectedDistance,  // Use current radius selection
         features: {
-            roads: true,
-            water: withWaterParks,
-            parks: withWaterParks,
-            paths: withPaths
+            water: featureState.water,
+            parks: featureState.parks,
+            roads_drive: featureState.roads_drive,
+            roads_paths: featureState.roads_paths,
+            roads_cycling: featureState.roads_cycling
         }
     };
     
     console.log('Generating final with settings:', finalSettings);
+    console.log('Feature state:', featureState);
     
     showFinalProgress(finalSettings);
     
@@ -833,6 +1366,18 @@ function showFinalProgress(settings) {
         const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
         const sizeLabel = `${Math.round(settings.width * 2.54)}×${Math.round(settings.height * 2.54)}cm`;
         metaEl.textContent = `${themeName} • ${settings.distance / 1000}km • ${sizeLabel}`;
+    }
+    
+    // Show the current preview image
+    const previewImg = document.getElementById('finalProgressPreview');
+    if (previewImg && currentPreview?.previewUrl) {
+        // Use the current preview image from the preview panel
+        const currentPreviewImg = document.getElementById('previewImage');
+        if (currentPreviewImg?.src) {
+            previewImg.src = currentPreviewImg.src;
+        } else {
+            previewImg.src = currentPreview.previewUrl + '?t=' + Date.now();
+        }
     }
     
     finalProgressBar.style.width = '0%';
