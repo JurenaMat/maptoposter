@@ -202,21 +202,27 @@ async def get_themes():
 async def get_examples():
     return [
         {"city": "San Francisco", "country": "USA", "theme": "sunset",
+         "description": "Warm oranges and pinks - golden hour aesthetic",
          "image": "/static/examples/san_francisco_sunset_thumb.webp",
          "preview": "/static/examples/san_francisco_sunset_preview.webp"},
         {"city": "Tokyo", "country": "Japan", "theme": "japanese_ink",
+         "description": "Traditional ink wash - minimalist with subtle red accent",
          "image": "/static/examples/tokyo_japanese_ink_thumb.webp",
          "preview": "/static/examples/tokyo_japanese_ink_preview.webp"},
         {"city": "Venice", "country": "Italy", "theme": "blueprint",
+         "description": "Classic architectural blueprint - technical drawing aesthetic",
          "image": "/static/examples/venice_blueprint_thumb.webp",
          "preview": "/static/examples/venice_blueprint_preview.webp"},
         {"city": "Dubai", "country": "UAE", "theme": "midnight_blue",
+         "description": "Deep navy with gold roads - luxury atlas aesthetic",
          "image": "/static/examples/dubai_midnight_blue_thumb.webp",
          "preview": "/static/examples/dubai_midnight_blue_preview.webp"},
         {"city": "Singapore", "country": "Singapore", "theme": "neon_cyberpunk",
+         "description": "Electric pink and cyan - bold night city vibes",
          "image": "/static/examples/singapore_neon_cyberpunk_thumb.webp",
          "preview": "/static/examples/singapore_neon_cyberpunk_preview.webp"},
         {"city": "Prague", "country": "Czech Republic", "theme": "noir",
+         "description": "Pure black with white roads - modern gallery aesthetic",
          "image": "/static/examples/prague_noir_thumb.webp",
          "preview": "/static/examples/prague_noir_preview.webp"},
     ]
@@ -716,6 +722,72 @@ async def start_final_generation(request: PosterRequest):
     
     asyncio.create_task(run_generation())
     return {"job_id": job_id, "status": "started"}
+
+
+@app.post("/api/generate")
+async def generate_poster_sync(request: PosterRequest):
+    """Synchronous poster generation - returns when complete."""
+    print(f"\n✓ Generate (sync): {request.city}, {request.country}")
+    print(f"  Features: water={request.features.water}, parks={request.features.parks}, paths={request.features.paths}")
+    
+    available_themes = get_available_themes()
+    if request.theme not in available_themes:
+        raise HTTPException(status_code=400, detail=f"Theme '{request.theme}' not found")
+    
+    try:
+        coords = get_coordinates(request.city, request.country)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    theme = load_theme(request.theme)
+    fonts = load_fonts()
+    
+    city_slug = re.sub(r'[\\/:*?"<>|]', '-', request.city.lower().replace(" ", "_").replace(",", ""))
+    job_id = uuid.uuid4().hex[:8]
+    filename = f"{city_slug}_{request.theme}_{job_id}.png"
+    output_path = posters_path / filename
+    
+    # Use 'all' network type if paths requested
+    network_type = 'all' if request.features.paths else 'drive'
+    
+    aspect_ratio = max(request.height, request.width) / min(request.height, request.width)
+    compensated_dist = request.distance * aspect_ratio / 4
+    
+    loop = asyncio.get_event_loop()
+    
+    # Fetch streets
+    g = await loop.run_in_executor(
+        executor, fetch_graph_fast, coords, compensated_dist, network_type
+    )
+    
+    if g is None:
+        raise HTTPException(status_code=500, detail="Failed to load street data")
+    
+    # Fetch water/parks if enabled
+    water = None
+    parks = None
+    include_wp = request.features.water or request.features.parks
+    if include_wp:
+        water = await loop.run_in_executor(executor, fetch_water_fast, coords, compensated_dist)
+        parks = await loop.run_in_executor(executor, fetch_parks_fast, coords, compensated_dist)
+    
+    # Render poster
+    await loop.run_in_executor(
+        executor,
+        render_full_poster,
+        request.city, request.country, g, water, parks,
+        coords, request.width, request.height, theme, fonts,
+        str(output_path), compensated_dist, include_wp
+    )
+    
+    gc.collect()
+    
+    print(f"  ✓ Generated: {filename}")
+    
+    return {
+        "poster_url": f"/posters/{filename}",
+        "filename": filename
+    }
 
 
 @app.get("/api/geocode")

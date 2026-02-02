@@ -1,6 +1,17 @@
 # Cloudflare Pages redirects
-# Proxy API calls to Cloud Run backend (set API_URL in env)
-/api/*  https://API_URL_PLACEHOLDER/api/:splat  200
+# Proxy API calls to Railway backend
 
-# SPA fallback
+# API endpoints
+/api/*  https://api.maptoprint.com/api/:splat  200
+
+# Proxy static assets from backend (examples, etc.)
+/static/*  https://api.maptoprint.com/static/:splat  200
+
+# Proxy preview images
+/previews/*  https://api.maptoprint.com/previews/:splat  200
+
+# Proxy poster downloads
+/posters/*  https://api.maptoprint.com/posters/:splat  200
+
+# SPA fallback - all other routes serve index.html
 /*  /index.html  200
