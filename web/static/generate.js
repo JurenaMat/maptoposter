@@ -52,12 +52,12 @@ let variants = {
 
 // Loading showcase - images rotate independently on a timer
 const LOADING_SHOWCASE = [
-    { image: '/static/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
-    { image: '/static/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
-    { image: '/static/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
-    { image: '/static/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
-    { image: '/static/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
-    { image: '/static/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
+    { image: '/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
+    { image: '/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
+    { image: '/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
+    { image: '/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
+    { image: '/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
+    { image: '/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
 ];
 
 // Fun loading messages grouped by stage

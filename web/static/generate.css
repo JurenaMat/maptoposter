@@ -1116,6 +1116,16 @@
     margin-left: auto;
 }
 
+.spinner {
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+.spinner circle {
+    stroke: currentColor;
+}
+
 .spinner-small {
     width: 16px;
     height: 16px;
