@@ -349,10 +349,11 @@ async function handleGenerate() {
             if (progress.status === 'complete') {
                 complete = true;
                 
-                // Add to previews
+                // Add to previews (prepend API base for cross-origin images)
+                const apiBase = window.API_BASE || '';
                 const preview = {
                     id: jobId,
-                    url: progress.preview_url,
+                    url: apiBase + progress.preview_url,
                     settings: settings,
                     timestamp: Date.now()
                 };
@@ -581,11 +582,13 @@ function completeFinalProgress() {
 
 function showResult(result, settings) {
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+    const apiBase = window.API_BASE || '';
+    const posterUrl = apiBase + result.poster_url;
     
-    resultImage.src = result.poster_url + '?t=' + Date.now();
+    resultImage.src = posterUrl + '?t=' + Date.now();
     resultCity.textContent = settings.city;
     resultTheme.textContent = `${themeName} • ${settings.width}×${settings.height}"`;
-    downloadBtn.href = result.poster_url;
+    downloadBtn.href = posterUrl;
     downloadBtn.download = result.filename;
     
     resultModal.classList.add('active');

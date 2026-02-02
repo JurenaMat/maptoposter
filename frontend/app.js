@@ -22,12 +22,13 @@ async function loadExamples() {
         setupHeroCarousel(examples);
         
         // Render gallery with optimized lazy loading
+        const apiBase = window.API_BASE || '';
         gallery.innerHTML = examples.map(example => `
             <div class="gallery-item" data-city="${example.city}" data-country="${example.country}" data-theme="${example.theme}">
                 <div class="gallery-item-placeholder"></div>
                 <img 
-                    src="${example.image}" 
-                    data-preview="${example.preview || example.image}"
+                    src="${apiBase}${example.image}" 
+                    data-preview="${apiBase}${example.preview || example.image}"
                     alt="${example.city} map poster" 
                     loading="lazy"
                     decoding="async"
@@ -59,7 +60,8 @@ async function loadExamples() {
 function setupHeroCarousel(examples) {
     if (!heroCarousel || examples.length === 0) return;
     
-    carouselImages = examples.map(e => e.image);
+    const apiBase = window.API_BASE || '';
+    carouselImages = examples.map(e => apiBase + e.image);
     
     // Create carousel slides
     heroCarousel.innerHTML = carouselImages.map((img, index) => `
