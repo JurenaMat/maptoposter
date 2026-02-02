@@ -281,9 +281,8 @@ def generate_layer_images(
     
     # Project graph once
     g_proj = ox.project_graph(g_drive)
-    crop_xlim, crop_ylim = get_crop_limits(g_proj, point, None, compensated_dist)
     
-    # We need a dummy figure to calculate crop limits properly
+    # Create figure to calculate crop limits properly
     fig_temp, ax_temp = plt.subplots(figsize=(width, height))
     crop_xlim, crop_ylim = get_crop_limits(g_proj, point, fig_temp, compensated_dist)
     plt.close(fig_temp)
