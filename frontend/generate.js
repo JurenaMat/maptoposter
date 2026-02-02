@@ -408,8 +408,9 @@ function updateProgress(step, total, message) {
 function showPreview(preview) {
     const settings = preview.settings;
     const themeName = themes.find(t => t.name === settings.theme)?.display_name || settings.theme;
+    const apiBase = window.API_BASE || '';
     
-    previewImage.src = preview.url + '?t=' + preview.timestamp;
+    previewImage.src = apiBase + preview.url + '?t=' + preview.timestamp;
     previewCity.textContent = `${settings.city}, ${settings.country}`;
     previewMeta.textContent = `${themeName} • ${settings.distance / 1000}km • ${settings.width}×${settings.height}"`;
     
@@ -424,9 +425,10 @@ function renderMiniPreviews() {
     
     previousPreviews.style.display = 'block';
     
+    const apiBase = window.API_BASE || '';
     previewsMiniGrid.innerHTML = previews.map((p, index) => `
         <div class="mini-preview ${index === currentPreviewIndex ? 'active' : ''}" data-index="${index}">
-            <img src="${p.url}?t=${p.timestamp}" alt="Preview ${index + 1}">
+            <img src="${apiBase}${p.url}?t=${p.timestamp}" alt="Preview ${index + 1}">
             <div class="mini-preview-remove" onclick="event.stopPropagation(); removePreview(${index})">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M18 6L6 18M6 6l12 12"/>
