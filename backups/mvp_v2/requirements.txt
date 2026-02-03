@@ -1,0 +1,35 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Core dependencies
+certifi
+charset-normalizer
+contourpy
+cycler
+fonttools
+geographiclib
+geopandas
+geopy
+idna
+kiwisolver
+lat_lon_parser
+matplotlib
+networkx
+numpy
+osmnx>=2.0.0
+packaging
+pandas
+pillow
+pyogrio
+pyparsing
+pyproj
+python-dateutil
+pytz
+requests
+scipy
+shapely
+six
+tqdm
+tzdata
+urllib3

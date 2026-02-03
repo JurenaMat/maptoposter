@@ -1,5 +1,5 @@
 /**
- * MapToPoster Homepage
+ * MapToPrint Homepage
  * Simple gallery and navigation to /generate
  */
 

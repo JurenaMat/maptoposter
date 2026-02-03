@@ -1,5 +1,5 @@
 [project]
-name = "maptoposter"
+name = "maptoprint"
 version = "0.2.0"
 description = "Generate beautiful, minimalist map posters for any city in the world."
 readme = "README.md"

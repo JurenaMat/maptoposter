@@ -1,5 +1,5 @@
 """
-MapToPoster Web Application
+MapToPrint Web Application
 ===========================
 MVP v1.0 - 2026-02-01
 
@@ -56,7 +56,7 @@ import osmnx as ox
 from matplotlib.font_manager import FontProperties
 
 app = FastAPI(
-    title="MapToPoster",
+    title="MapToPrint",
     description="Generate beautiful map posters for any city",
     version="MVP-1.0.0",
 )
@@ -462,7 +462,7 @@ async def geocode_city(q: str):
                 "limit": 5,
                 "featuretype": "city",
             },
-            headers={"User-Agent": "MapToPoster/1.0"},
+            headers={"User-Agent": "MapToPrint/1.0"},
             timeout=10,
         )
         response.raise_for_status()

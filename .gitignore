@@ -1,4 +1,5 @@
 cache/*
+web/cache/*
 
 # Generated files (keep examples, ignore user-generated)
 web/previews/*.png

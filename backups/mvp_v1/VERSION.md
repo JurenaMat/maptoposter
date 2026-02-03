@@ -1,4 +1,4 @@
-# MapToPoster MVP v1.0
+# MapToPrint MVP v1.0
 
 **Date:** 2026-02-01  
 **Status:** MVP Complete ✓
@@ -46,7 +46,7 @@ web/
 ## To Run
 ```bash
 source $HOME/.local/bin/env
-cd /path/to/maptoposter
+cd /path/to/maptoprint
 uv run uvicorn web.app:app --reload --host 0.0.0.0 --port 8000
 ```
 
