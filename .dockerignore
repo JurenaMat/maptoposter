@@ -16,7 +16,6 @@ htmlcov
 *.md
 !README.md
 backups/
-frontend/
 posters/*.png
 cache/
 .DS_Store

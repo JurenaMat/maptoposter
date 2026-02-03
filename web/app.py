@@ -151,10 +151,6 @@ app.add_middleware(
 # Use frontend/ as the single source of truth for static files
 # This ensures local dev matches production (Cloudflare Pages)
 frontend_path = Path(__file__).parent.parent / "frontend"
-if not frontend_path.exists():
-    # Fallback to web/static if frontend doesn't exist
-    frontend_path = Path(__file__).parent / "static"
-frontend_path.mkdir(exist_ok=True)
 
 posters_path = Path(__file__).parent.parent / POSTERS_DIR
 posters_path.mkdir(exist_ok=True)
@@ -164,8 +160,10 @@ previews_path = Path(__file__).parent / "previews"
 previews_path.mkdir(exist_ok=True)
 app.mount("/previews", StaticFiles(directory=str(previews_path)), name="previews")
 
-# Mount frontend assets (examples, css, js) - must be after API routes are defined
-# We'll mount this at the end of the file to ensure API routes take priority
+# Mount frontend at /static/ (for CSS, JS) and /examples/ (for images)
+# This matches how HTML references these files
+app.mount("/examples", StaticFiles(directory=str(frontend_path / "examples")), name="examples")
+app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
 
 
 # ============================================
@@ -297,7 +295,13 @@ def fetch_parks_fast(point, dist):
 
 @app.get("/")
 async def root():
-    return FileResponse(frontend_path / "index.html")
+    index_path = frontend_path / "index.html"
+    if not index_path.exists():
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Frontend file not found at {index_path}. Ensure frontend/ directory is included in build."
+        )
+    return FileResponse(index_path)
 
 
 @app.get("/health")
@@ -365,28 +369,28 @@ async def get_examples():
     return [
         {"city": "San Francisco", "country": "USA", "theme": "sunset",
          "description": "Warm oranges and pinks - golden hour aesthetic",
-         "image": "/examples/san_francisco_sunset_thumb.webp",
-         "preview": "/examples/san_francisco_sunset_preview.webp"},
+         "image": "/static/examples/san_francisco_sunset_thumb.webp",
+         "preview": "/static/examples/san_francisco_sunset_preview.webp"},
         {"city": "Tokyo", "country": "Japan", "theme": "japanese_ink",
          "description": "Traditional ink wash - minimalist with subtle red accent",
-         "image": "/examples/tokyo_japanese_ink_thumb.webp",
-         "preview": "/examples/tokyo_japanese_ink_preview.webp"},
+         "image": "/static/examples/tokyo_japanese_ink_thumb.webp",
+         "preview": "/static/examples/tokyo_japanese_ink_preview.webp"},
         {"city": "Venice", "country": "Italy", "theme": "blueprint",
          "description": "Classic architectural blueprint - technical drawing aesthetic",
-         "image": "/examples/venice_blueprint_thumb.webp",
-         "preview": "/examples/venice_blueprint_preview.webp"},
+         "image": "/static/examples/venice_blueprint_thumb.webp",
+         "preview": "/static/examples/venice_blueprint_preview.webp"},
         {"city": "Dubai", "country": "UAE", "theme": "midnight_blue",
          "description": "Deep navy with gold roads - luxury atlas aesthetic",
-         "image": "/examples/dubai_midnight_blue_thumb.webp",
-         "preview": "/examples/dubai_midnight_blue_preview.webp"},
+         "image": "/static/examples/dubai_midnight_blue_thumb.webp",
+         "preview": "/static/examples/dubai_midnight_blue_preview.webp"},
         {"city": "Singapore", "country": "Singapore", "theme": "neon_cyberpunk",
          "description": "Electric pink and cyan - bold night city vibes",
-         "image": "/examples/singapore_neon_cyberpunk_thumb.webp",
-         "preview": "/examples/singapore_neon_cyberpunk_preview.webp"},
+         "image": "/static/examples/singapore_neon_cyberpunk_thumb.webp",
+         "preview": "/static/examples/singapore_neon_cyberpunk_preview.webp"},
         {"city": "Prague", "country": "Czech Republic", "theme": "noir",
          "description": "Pure black with white roads - modern gallery aesthetic",
-         "image": "/examples/prague_noir_thumb.webp",
-         "preview": "/examples/prague_noir_preview.webp"},
+         "image": "/static/examples/prague_noir_thumb.webp",
+         "preview": "/static/examples/prague_noir_preview.webp"},
     ]
 
 
@@ -1353,9 +1357,3 @@ async def geocode(q: str):
     except Exception as e:
         print(f"Geocoding error: {e}")
         return []
-
-
-# Mount frontend static files LAST (after all API routes)
-# This serves /examples/, CSS, JS, etc. from the frontend/ folder
-# Ensures local dev uses same paths as production (Cloudflare Pages)
-app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")

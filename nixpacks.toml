@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = [
+  "pip install --no-cache-dir -r requirements.txt",
+  "pip install --no-cache-dir fastapi>=0.115.0 uvicorn[standard]>=0.34.0 boto3>=1.34.0"
+]
+
+[phases.build]
+cmds = [
+  "mkdir -p /app/web/previews /app/posters /app/cache"
+]
+
+[start]
+cmd = "python start.py"
