@@ -21,10 +21,10 @@
 - `requirements.txt` - Python dependencies
 
 ## nixpacks.toml Requirements
-The `nixpacks.toml` file MUST include:
-1. **System packages**: `gdal`, `geos`, `proj` (required for geopandas/osmnx)
-2. **Python version**: `python311`
-3. **Directory creation**: `web/previews`, `posters`, `cache` (relative paths, NOT /app/...)
+The `nixpacks.toml` file MUST:
+1. **NOT specify Python in nixPkgs** - this breaks pip! Let nixpacks auto-detect from requirements.txt
+2. **Use aptPkgs for geo libraries**: `libgdal-dev`, `libgeos-dev`, `libproj-dev`, `gdal-bin`
+3. **Create directories**: `web/previews`, `posters`, `cache` (relative paths, NOT /app/...)
 
 ## Pre-Deployment Checklist
 Before pushing to main:
@@ -34,10 +34,11 @@ Before pushing to main:
 4. Check `nixpacks.toml` has correct system packages
 
 ## Common Build Failures
-1. **Missing system packages**: Add `gdal`, `geos`, `proj` to nixpacks.toml
-2. **Wrong directory paths**: Use relative paths (not `/app/...`) in nixpacks.toml
-3. **Missing frontend**: Ensure `frontend/` is committed and not in `.gitignore`
-4. **Import errors**: Run app import test locally before pushing
+1. **"pip: command not found"**: Do NOT specify python in nixPkgs! Let nixpacks auto-detect.
+2. **Missing geo libraries**: Use `aptPkgs` (not nixPkgs) for libgdal-dev, libgeos-dev, libproj-dev
+3. **Wrong directory paths**: Use relative paths (not `/app/...`) in nixpacks.toml
+4. **Missing frontend**: Ensure `frontend/` is committed and not in `.gitignore`
+5. **Import errors**: Run app import test locally before pushing
 
 ## Deployment Process
 1. Run local tests: `uv run pytest tests/test_deployment.py -v`
