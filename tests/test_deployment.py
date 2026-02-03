@@ -20,26 +20,24 @@ class TestBuildConfiguration:
         nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
         assert nixpacks_path.exists(), "nixpacks.toml is required for Railway deployment"
 
-    def test_nixpacks_has_required_packages(self):
-        """nixpacks.toml must include gdal, geos, proj for geo libraries."""
+    def test_nixpacks_has_geo_packages(self):
+        """nixpacks.toml must include geo library dependencies."""
         nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
         with open(nixpacks_path, "rb") as f:
             config = tomllib.load(f)
         
-        nix_pkgs = config.get("phases", {}).get("setup", {}).get("nixPkgs", [])
-        assert "gdal" in nix_pkgs, "nixpacks.toml must include gdal"
-        assert "geos" in nix_pkgs, "nixpacks.toml must include geos"
-        assert "proj" in nix_pkgs, "nixpacks.toml must include proj"
-
-    def test_nixpacks_has_python(self):
-        """nixpacks.toml must specify Python version."""
-        nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
-        with open(nixpacks_path, "rb") as f:
-            config = tomllib.load(f)
+        # Check for apt packages (preferred for geo libs)
+        apt_pkgs = config.get("phases", {}).get("setup", {}).get("aptPkgs", [])
+        apt_pkgs_str = " ".join(apt_pkgs).lower()
         
-        nix_pkgs = config.get("phases", {}).get("setup", {}).get("nixPkgs", [])
-        has_python = any("python" in pkg for pkg in nix_pkgs)
-        assert has_python, "nixpacks.toml must specify Python version"
+        # Should have gdal, geos, proj in some form
+        has_gdal = "gdal" in apt_pkgs_str
+        has_geos = "geos" in apt_pkgs_str
+        has_proj = "proj" in apt_pkgs_str
+        
+        assert has_gdal, "nixpacks.toml must include gdal (via aptPkgs)"
+        assert has_geos, "nixpacks.toml must include geos (via aptPkgs)"
+        assert has_proj, "nixpacks.toml must include proj (via aptPkgs)"
 
     def test_nixpacks_start_command(self):
         """nixpacks.toml must have start command."""

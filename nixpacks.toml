@@ -1,16 +1,11 @@
-[phases.setup]
-nixPkgs = ["python311", "gdal", "geos", "proj"]
+# Railway/Nixpacks configuration
+# Let nixpacks auto-detect Python, add geo library dependencies via apt
 
-[phases.install]
-cmds = [
-  "pip install --no-cache-dir -r requirements.txt",
-  "pip install --no-cache-dir fastapi>=0.115.0 uvicorn[standard]>=0.34.0 boto3>=1.34.0"
-]
+[phases.setup]
+aptPkgs = ["libgdal-dev", "libgeos-dev", "libproj-dev", "gdal-bin"]
 
 [phases.build]
-cmds = [
-  "mkdir -p web/previews posters cache"
-]
+cmds = ["mkdir -p web/previews posters cache"]
 
 [start]
 cmd = "python start.py"
