@@ -1,5 +1,5 @@
 /**
- * MapToPoster Generate Page
+ * MapToPrint Generate Page
  * MVP v1.7 - 2026-02-02
  * 
  * PROGRESSIVE RADIUS LOADING

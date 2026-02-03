@@ -1,5 +1,5 @@
 """
-MapToPoster Web Application
+MapToPrint Web Application
 ===========================
 MVP v1.6 - 2026-02-02
 
@@ -138,7 +138,7 @@ def get_filtered_graph(graph_all, features: dict):
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 
-app = FastAPI(title="MapToPoster", version="MVP-1.6.0")
+app = FastAPI(title="MapToPrint", version="MVP-1.6.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -148,9 +148,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-static_path = Path(__file__).parent / "static"
-static_path.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+# Use frontend/ as single source of truth for static files
+frontend_path = Path(__file__).parent.parent / "frontend"
+app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
 
 posters_path = Path(__file__).parent.parent / POSTERS_DIR
 posters_path.mkdir(exist_ok=True)
@@ -290,7 +290,7 @@ def fetch_parks_fast(point, dist):
 
 @app.get("/")
 async def root():
-    return FileResponse(static_path / "index.html")
+    return FileResponse(frontend_path / "index.html")
 
 
 @app.get("/health")
@@ -335,7 +335,23 @@ async def cancel_job(job_id: str):
 
 @app.get("/generate")
 async def generate_page():
-    return FileResponse(static_path / "generate.html")
+    """Serve generate page with local development config injected."""
+    from fastapi.responses import HTMLResponse
+    
+    html_path = frontend_path / "generate.html"
+    with open(html_path, 'r') as f:
+        html_content = f.read()
+    
+    # Inject local development config (STATIC_BASE for /static/ mount)
+    local_config = """<script>
+    window.MAPTOPRINT_API_URL = '';
+    window.MAPTOPRINT_STATIC_BASE = '/static';
+</script>
+"""
+    # Insert before </head>
+    html_content = html_content.replace('</head>', local_config + '</head>')
+    
+    return HTMLResponse(content=html_content)
 
 
 @app.get("/api/themes")
@@ -1311,7 +1327,7 @@ async def generate_poster_sync(request: PosterRequest):
 async def geocode(q: str):
     from geopy.geocoders import Nominatim
     
-    geolocator = Nominatim(user_agent="maptoposter", timeout=10)
+    geolocator = Nominatim(user_agent="maptoprint", timeout=10)
     
     try:
         locations = geolocator.geocode(q, exactly_one=False, limit=5, addressdetails=True)
