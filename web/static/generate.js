@@ -1,5 +1,5 @@
 /**
- * MapToPoster Generate Page
+ * MapToPrint Generate Page
  * MVP v1.7 - 2026-02-02
  * 
  * PROGRESSIVE RADIUS LOADING
@@ -52,12 +52,12 @@ let variants = {
 
 // Loading showcase - images rotate independently on a timer
 const LOADING_SHOWCASE = [
-    { image: '/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
-    { image: '/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
-    { image: '/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
-    { image: '/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
-    { image: '/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
-    { image: '/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
+    { image: '/static/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
+    { image: '/static/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
+    { image: '/static/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
+    { image: '/static/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
+    { image: '/static/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
+    { image: '/static/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
 ];
 
 // Fun loading messages grouped by stage
@@ -111,31 +111,58 @@ function advanceShowcase() {
     updateShowcaseVisual();
 }
 
-function updateShowcaseVisual() {
+function updateShowcaseVisual(immediate = false) {
     const showcase = getCurrentShowcase();
     const imgEl = document.getElementById('loadingStageImg');
     const emojiEl = document.getElementById('stageEmoji');
     
     if (emojiEl) {
-        emojiEl.style.transform = 'scale(0) rotate(-180deg)';
-        setTimeout(() => {
+        if (immediate) {
             emojiEl.textContent = showcase.emoji;
             emojiEl.style.transform = 'scale(1) rotate(0deg)';
-        }, 200);
+        } else {
+            emojiEl.style.transform = 'scale(0) rotate(-180deg)';
+            setTimeout(() => {
+                emojiEl.textContent = showcase.emoji;
+                emojiEl.style.transform = 'scale(1) rotate(0deg)';
+            }, 200);
+        }
     }
     
     if (imgEl) {
-        imgEl.classList.remove('visible');
-        setTimeout(() => {
+        if (immediate) {
+            // Load first image immediately without animation
             imgEl.src = showcase.image;
             imgEl.onload = () => imgEl.classList.add('visible');
-        }, 250);
+            imgEl.onerror = () => {
+                console.error('Failed to load showcase image:', showcase.image);
+                // Try without /static prefix as fallback
+                if (showcase.image.startsWith('/static/')) {
+                    imgEl.src = showcase.image.replace('/static/', '/');
+                }
+            };
+        } else {
+            imgEl.classList.remove('visible');
+            setTimeout(() => {
+                imgEl.src = showcase.image;
+                imgEl.onload = () => imgEl.classList.add('visible');
+                imgEl.onerror = () => console.error('Failed to load showcase image:', showcase.image);
+            }, 250);
+        }
     }
+}
+
+function preloadShowcaseImages() {
+    LOADING_SHOWCASE.forEach(item => {
+        const img = new Image();
+        img.src = item.image;
+    });
 }
 
 function startShowcaseRotation() {
     currentShowcaseIndex = 0;
-    updateShowcaseVisual();
+    preloadShowcaseImages();
+    updateShowcaseVisual(true);  // Load first image immediately
     // Rotate every 3 seconds
     showcaseInterval = setInterval(advanceShowcase, 3000);
 }
