@@ -51,14 +51,20 @@ let variants = {
 };
 
 // Loading showcase - images rotate independently on a timer
+// Uses STATIC_BASE from config.js ('' for production, '/static' for local)
 const LOADING_SHOWCASE = [
-    { image: '/examples/tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
-    { image: '/examples/venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
-    { image: '/examples/san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
-    { image: '/examples/prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
-    { image: '/examples/dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
-    { image: '/examples/singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
+    { image: 'tokyo_japanese_ink_preview.webp', emoji: '🗾', label: 'Tokyo' },
+    { image: 'venice_blueprint_preview.webp', emoji: '🇮🇹', label: 'Venice' },
+    { image: 'san_francisco_sunset_preview.webp', emoji: '🌉', label: 'San Francisco' },
+    { image: 'prague_noir_preview.webp', emoji: '🏰', label: 'Prague' },
+    { image: 'dubai_midnight_blue_preview.webp', emoji: '🏙️', label: 'Dubai' },
+    { image: 'singapore_neon_cyberpunk_preview.webp', emoji: '✨', label: 'Singapore' },
 ];
+
+function getShowcaseImagePath(filename) {
+    const base = window.STATIC_BASE || '';
+    return `${base}/examples/${filename}`;
+}
 
 // Fun loading messages grouped by stage
 const LOADING_MESSAGES = {
@@ -115,6 +121,7 @@ function updateShowcaseVisual(immediate = false) {
     const showcase = getCurrentShowcase();
     const imgEl = document.getElementById('loadingStageImg');
     const emojiEl = document.getElementById('stageEmoji');
+    const imagePath = getShowcaseImagePath(showcase.image);
     
     if (emojiEl) {
         if (immediate) {
@@ -132,15 +139,15 @@ function updateShowcaseVisual(immediate = false) {
     if (imgEl) {
         if (immediate) {
             // Load first image immediately without animation
-            imgEl.src = showcase.image;
+            imgEl.src = imagePath;
             imgEl.onload = () => imgEl.classList.add('visible');
-            imgEl.onerror = () => console.error('Failed to load showcase image:', showcase.image);
+            imgEl.onerror = () => console.error('Failed to load showcase image:', imagePath);
         } else {
             imgEl.classList.remove('visible');
             setTimeout(() => {
-                imgEl.src = showcase.image;
+                imgEl.src = imagePath;
                 imgEl.onload = () => imgEl.classList.add('visible');
-                imgEl.onerror = () => console.error('Failed to load showcase image:', showcase.image);
+                imgEl.onerror = () => console.error('Failed to load showcase image:', imagePath);
             }, 250);
         }
     }
@@ -149,7 +156,7 @@ function updateShowcaseVisual(immediate = false) {
 function preloadShowcaseImages() {
     LOADING_SHOWCASE.forEach(item => {
         const img = new Image();
-        img.src = item.image;
+        img.src = getShowcaseImagePath(item.image);
     });
 }
 
