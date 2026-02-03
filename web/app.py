@@ -304,6 +304,32 @@ async def root():
     return FileResponse(index_path)
 
 
+# Serve static assets at root level (as referenced in HTML)
+@app.get("/styles.css")
+async def styles_css():
+    return FileResponse(frontend_path / "styles.css", media_type="text/css")
+
+
+@app.get("/config.js")
+async def config_js():
+    return FileResponse(frontend_path / "config.js", media_type="application/javascript")
+
+
+@app.get("/app.js")
+async def app_js():
+    return FileResponse(frontend_path / "app.js", media_type="application/javascript")
+
+
+@app.get("/generate.css")
+async def generate_css():
+    return FileResponse(frontend_path / "generate.css", media_type="text/css")
+
+
+@app.get("/generate.js")
+async def generate_js():
+    return FileResponse(frontend_path / "generate.js", media_type="application/javascript")
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "MVP-1.6.0"}
