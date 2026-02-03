@@ -111,31 +111,52 @@ function advanceShowcase() {
     updateShowcaseVisual();
 }
 
-function updateShowcaseVisual() {
+function updateShowcaseVisual(immediate = false) {
     const showcase = getCurrentShowcase();
     const imgEl = document.getElementById('loadingStageImg');
     const emojiEl = document.getElementById('stageEmoji');
     
     if (emojiEl) {
-        emojiEl.style.transform = 'scale(0) rotate(-180deg)';
-        setTimeout(() => {
+        if (immediate) {
             emojiEl.textContent = showcase.emoji;
             emojiEl.style.transform = 'scale(1) rotate(0deg)';
-        }, 200);
+        } else {
+            emojiEl.style.transform = 'scale(0) rotate(-180deg)';
+            setTimeout(() => {
+                emojiEl.textContent = showcase.emoji;
+                emojiEl.style.transform = 'scale(1) rotate(0deg)';
+            }, 200);
+        }
     }
     
     if (imgEl) {
-        imgEl.classList.remove('visible');
-        setTimeout(() => {
+        if (immediate) {
+            // Load first image immediately without animation
             imgEl.src = showcase.image;
             imgEl.onload = () => imgEl.classList.add('visible');
-        }, 250);
+            imgEl.onerror = () => console.error('Failed to load showcase image:', showcase.image);
+        } else {
+            imgEl.classList.remove('visible');
+            setTimeout(() => {
+                imgEl.src = showcase.image;
+                imgEl.onload = () => imgEl.classList.add('visible');
+                imgEl.onerror = () => console.error('Failed to load showcase image:', showcase.image);
+            }, 250);
+        }
     }
+}
+
+function preloadShowcaseImages() {
+    LOADING_SHOWCASE.forEach(item => {
+        const img = new Image();
+        img.src = item.image;
+    });
 }
 
 function startShowcaseRotation() {
     currentShowcaseIndex = 0;
-    updateShowcaseVisual();
+    preloadShowcaseImages();
+    updateShowcaseVisual(true);  // Load first image immediately
     // Rotate every 3 seconds
     showcaseInterval = setInterval(advanceShowcase, 3000);
 }
