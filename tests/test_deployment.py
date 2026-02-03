@@ -8,6 +8,67 @@ Run with: pytest tests/test_deployment.py -v
 """
 
 import pytest
+from pathlib import Path
+import tomllib
+
+
+class TestBuildConfiguration:
+    """Test build configuration files are valid for Railway deployment."""
+
+    def test_nixpacks_toml_exists(self):
+        """nixpacks.toml must exist for Railway builds."""
+        nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
+        assert nixpacks_path.exists(), "nixpacks.toml is required for Railway deployment"
+
+    def test_nixpacks_has_required_packages(self):
+        """nixpacks.toml must include gdal, geos, proj for geo libraries."""
+        nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
+        with open(nixpacks_path, "rb") as f:
+            config = tomllib.load(f)
+        
+        nix_pkgs = config.get("phases", {}).get("setup", {}).get("nixPkgs", [])
+        assert "gdal" in nix_pkgs, "nixpacks.toml must include gdal"
+        assert "geos" in nix_pkgs, "nixpacks.toml must include geos"
+        assert "proj" in nix_pkgs, "nixpacks.toml must include proj"
+
+    def test_nixpacks_has_python(self):
+        """nixpacks.toml must specify Python version."""
+        nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
+        with open(nixpacks_path, "rb") as f:
+            config = tomllib.load(f)
+        
+        nix_pkgs = config.get("phases", {}).get("setup", {}).get("nixPkgs", [])
+        has_python = any("python" in pkg for pkg in nix_pkgs)
+        assert has_python, "nixpacks.toml must specify Python version"
+
+    def test_nixpacks_start_command(self):
+        """nixpacks.toml must have start command."""
+        nixpacks_path = Path(__file__).parent.parent / "nixpacks.toml"
+        with open(nixpacks_path, "rb") as f:
+            config = tomllib.load(f)
+        
+        start_cmd = config.get("start", {}).get("cmd", "")
+        assert "python" in start_cmd and "start.py" in start_cmd, \
+            "nixpacks.toml start command must run python start.py"
+
+    def test_frontend_directory_exists(self):
+        """frontend/ directory must exist with index.html."""
+        frontend_path = Path(__file__).parent.parent / "frontend"
+        assert frontend_path.exists(), "frontend/ directory is required"
+        assert (frontend_path / "index.html").exists(), "frontend/index.html is required"
+
+    def test_requirements_txt_exists(self):
+        """requirements.txt must exist."""
+        req_path = Path(__file__).parent.parent / "requirements.txt"
+        assert req_path.exists(), "requirements.txt is required"
+
+    def test_app_imports_successfully(self):
+        """web.app must import without errors."""
+        try:
+            from web.app import app
+            assert app is not None
+        except ImportError as e:
+            pytest.fail(f"Failed to import web.app: {e}")
 
 
 class TestHealthAndBasicEndpoints:

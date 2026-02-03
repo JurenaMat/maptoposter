@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311"]
+nixPkgs = ["python311", "gdal", "geos", "proj"]
 
 [phases.install]
 cmds = [
@@ -9,7 +9,7 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "mkdir -p /app/web/previews /app/posters /app/cache"
+  "mkdir -p web/previews posters cache"
 ]
 
 [start]

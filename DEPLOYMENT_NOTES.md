@@ -4,6 +4,7 @@
 - **Backend**: Railway (Python FastAPI) - serves API and static files
 - **Frontend**: Cloudflare Pages (static HTML/CSS/JS) - serves the main website
 - **Domain**: maptoprint.com
+- **Repository**: github.com/JurenaMat/maptoposter
 
 ## Railway Deployment
 - Uses **nixpacks** builder (not Docker)
@@ -15,18 +16,42 @@
 ## Important Files
 - `web/app.py` - Main FastAPI application
 - `frontend/` - Static frontend files (served by Railway backend for root route)
-- `.dockerignore` - Only affects Docker builds, NOT Railway (Railway uses nixpacks)
-- `railway.toml` - Railway configuration
+- `nixpacks.toml` - Nixpacks build configuration (CRITICAL for Railway)
+- `railway.toml` - Railway deployment configuration
+- `requirements.txt` - Python dependencies
 
-## Common Issues
-1. **500 Error on root route**: Frontend directory not included in build
-   - Solution: Ensure `frontend/` is not in `.gitignore` or any ignore files
-   - Check that `frontend/index.html` exists in the repository
+## nixpacks.toml Requirements
+The `nixpacks.toml` file MUST include:
+1. **System packages**: `gdal`, `geos`, `proj` (required for geopandas/osmnx)
+2. **Python version**: `python311`
+3. **Directory creation**: `web/previews`, `posters`, `cache` (relative paths, NOT /app/...)
 
-2. **Static files not loading**: Check that `frontend/` directory is mounted correctly in `web/app.py`
+## Pre-Deployment Checklist
+Before pushing to main:
+1. Run `uv run pytest tests/test_deployment.py -v` - all tests must pass
+2. Run `uv run python -c "from web.app import app; print('OK')"` - app must import
+3. Verify `frontend/index.html` exists
+4. Check `nixpacks.toml` has correct system packages
+
+## Common Build Failures
+1. **Missing system packages**: Add `gdal`, `geos`, `proj` to nixpacks.toml
+2. **Wrong directory paths**: Use relative paths (not `/app/...`) in nixpacks.toml
+3. **Missing frontend**: Ensure `frontend/` is committed and not in `.gitignore`
+4. **Import errors**: Run app import test locally before pushing
 
 ## Deployment Process
-1. Push changes to git (main branch)
-2. Railway automatically detects changes and rebuilds
-3. Check Railway logs for build/deployment status
-4. Verify deployment at maptoprint.com
+1. Run local tests: `uv run pytest tests/test_deployment.py -v`
+2. Push changes to git (main branch)
+3. Railway automatically detects changes and rebuilds
+4. Check Railway logs for build/deployment status
+5. Verify deployment at maptoprint.com
+
+## Testing Commands
+```bash
+# API tests (fast)
+uv run pytest tests/test_deployment.py -v
+
+# E2E tests (requires server)
+PORT=8000 uv run python start.py &
+uv run pytest tests/e2e/test_full_flow.py -v --base-url http://localhost:8000
+```
