@@ -1,5 +1,16 @@
 # MapToPrint Deployment Notes
 
+## ⚠️ MANDATORY: Run Tests Before EVERY Push
+
+```bash
+uv run pytest tests/test_deployment.py -v
+```
+
+**ALL tests MUST pass before pushing. NO EXCEPTIONS.**
+Failed builds waste time and break production. The tests catch configuration errors that will fail on Railway.
+
+---
+
 ## Architecture
 - **Backend**: Railway (Python FastAPI) - serves API and static files
 - **Frontend**: Cloudflare Pages (static HTML/CSS/JS) - serves the main website
